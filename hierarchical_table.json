@@ -12,7 +12,7 @@
         {
             "kind": "main",
             "tag": "custom-hierarchical-table",
-            "url": "/hierarchical_table.js",
+            "url": "https://bizimniyan.github.io/sac-widgets/hierarchical_table.js",
             "integrity": "",
             "ignoreIntegrity": true
         }
