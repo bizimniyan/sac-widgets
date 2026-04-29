@@ -1,6 +1,6 @@
 {
     "name": "HierarchicalTableWidget",
-    "description": "Hierarchical Table with 2 Dimensions and Measures",
+    "description": "Hierarchical Table with 2 Dimensions, Periods and Measures",
     "newInstancePrefix": "HierarchicalTable",
     "eula": "",
     "vendor": "Custom",
@@ -34,12 +34,17 @@
             "feeds": [
                 {
                     "id": "dimensions",
-                    "description": "Rows (1st: Material, 2nd: Component)",
+                    "description": "Satırlar (1. Mamül, 2. Bileşen)",
+                    "type": "dimension"
+                },
+                {
+                    "id": "columnDimensions",
+                    "description": "Sütunlar (Dönem/Tarih)",
                     "type": "dimension"
                 },
                 {
                     "id": "measures",
-                    "description": "Columns (Measures/Periods)",
+                    "description": "Değerler (Miktar)",
                     "type": "mainStructureMember"
                 }
             ]

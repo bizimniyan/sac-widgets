@@ -12,41 +12,14 @@
     template.innerHTML = `
         <link href="https://unpkg.com/tabulator-tables@5.5.0/dist/css/tabulator.min.css" rel="stylesheet">
         <style>
-            :host {
-                display: block;
-                width: 100%;
-                height: 100%;
-                background-color: #fff;
-            }
-            #example-table {
-                width: 100%;
-                height: 100%;
-                font-size: 14px;
-            }
-            /* Tabulator için kurumsal renk düzenlemeleri */
-            .tabulator {
-                border: 1px solid #e0e0e0 !important;
-                background-color: #fff;
-            }
-            .tabulator-header {
-                background-color: #f4f6f9 !important;
-                color: #333;
-                font-weight: 600;
-                border-bottom: 2px solid #ddd !important;
-            }
-            .tabulator-row {
-                border-bottom: 1px solid #eee;
-            }
-            .tabulator-row:nth-child(even) {
-                background-color: #fafafa;
-            }
-            .tabulator-row:hover {
-                background-color: #f0f4f8 !important;
-            }
-            .tabulator-row.tabulator-tree-level-0 {
-                font-weight: bold;
-                background-color: #fdfdfd;
-            }
+            :host { display: block; width: 100%; height: 100%; background-color: #fff; }
+            #example-table { width: 100%; height: 100%; font-size: 14px; }
+            .tabulator { border: 1px solid #e0e0e0 !important; background-color: #fff; }
+            .tabulator-header { background-color: #f4f6f9 !important; color: #333; font-weight: 600; border-bottom: 2px solid #ddd !important; }
+            .tabulator-row { border-bottom: 1px solid #eee; }
+            .tabulator-row:nth-child(even) { background-color: #fafafa; }
+            .tabulator-row:hover { background-color: #f0f4f8 !important; }
+            .tabulator-row.tabulator-tree-level-0 { font-weight: bold; background-color: #fdfdfd; }
         </style>
         <div id="example-table"></div>
     `;
@@ -69,11 +42,11 @@
 
         async initTabulator() {
             if (window.Tabulator) return;
-            this._container.innerHTML = "<div style='padding:10px;'>Tabulator Grid Kütüphanesi Yükleniyor...</div>";
+            this._container.innerHTML = "<div style='padding:10px;'>Tabulator Grid Yükleniyor...</div>";
             try {
                 await loadScript("https://unpkg.com/tabulator-tables@5.5.0/dist/js/tabulator.min.js");
             } catch (e) {
-                this._container.innerHTML = "<div style='padding:10px; color:red;'>Kütüphane yüklenemedi. İnternet bağlantınızı kontrol edin.</div>";
+                this._container.innerHTML = "<div style='padding:10px; color:red;'>Kütüphane yüklenemedi.</div>";
             }
         }
 
@@ -94,17 +67,30 @@
             const metadata = this.myDataSource.metadata;
 
             const dimKeys = metadata.feeds.dimensions?.values || [];
+            const colDimKeys = metadata.feeds.columnDimensions?.values || [];
             const measureKeys = metadata.feeds.measures?.values || [];
 
             if (dimKeys.length < 2) {
-                this._container.innerHTML = "<div style='padding:10px; color:red;'>Hata: Lütfen satırlara en az 2 boyut ekleyin (Örn: 1. Mamül, 2. Bileşen).</div>";
+                this._container.innerHTML = "<div style='padding:10px; color:red;'>Hata: Lütfen Satırlara en az 2 boyut ekleyin (Örn: 1. Mamül, 2. Bileşen).</div>";
                 return;
             }
 
             const parentDimKey = dimKeys[0];
             const childDimKey = dimKeys[1];
 
-            // 1. VERİYİ AĞAÇ YAPISINA ÇEVİRME
+            // PIVOT: Dinamik Tarih (Sütun) İsimlerini Bul
+            const dynamicCols = new Set();
+            const usePivot = colDimKeys.length > 0;
+            
+            data.forEach(row => {
+                if (usePivot) {
+                    let colVal = row[colDimKeys[0]]?.label || row[colDimKeys[0]]?.id || "Bilinmeyen Dönem";
+                    dynamicCols.add(colVal);
+                }
+            });
+            const dynamicColArray = Array.from(dynamicCols);
+
+            // 1. VERİYİ AĞAÇ YAPISINA ÇEVİRME (PIVOT İLE)
             const parentMap = new Map();
             const allChildren = new Set();
             const allParents = new Set();
@@ -119,20 +105,43 @@
                 if (!pId || !cId) return;
 
                 if (!parentMap.has(pId)) {
-                    parentMap.set(pId, { label: pLabel, children: [] });
+                    parentMap.set(pId, { label: pLabel, childrenMap: new Map() });
                 }
                 
                 allParents.add(pId);
                 allChildren.add(cId);
 
-                parentMap.get(pId).children.push({
-                    id: cId,
-                    label: cLabel,
-                    row: row
+                let pNode = parentMap.get(pId);
+                
+                // Alt bileşen aynı ebeveynde farklı tarihler için geldiyse tek objede birleştir (Pivot)
+                if (!pNode.childrenMap.has(cId)) {
+                    pNode.childrenMap.set(cId, {
+                        id: cId,
+                        label: cLabel,
+                        values: {}
+                    });
+                }
+
+                let cNode = pNode.childrenMap.get(cId);
+
+                // Ölçümleri Tarih kolonuna yaz
+                measureKeys.forEach(mKey => {
+                    let val = row[mKey]?.raw || 0;
+                    if (usePivot) {
+                        let colVal = row[colDimKeys[0]]?.label || row[colDimKeys[0]]?.id || "Bilinmeyen Dönem";
+                        let fieldKey = measureKeys.length > 1 ? `${colVal}_${mKey}` : colVal;
+                        cNode.values[fieldKey] = (cNode.values[fieldKey] || 0) + val;
+                    } else {
+                        cNode.values[mKey] = (cNode.values[mKey] || 0) + val;
+                    }
                 });
             });
 
-            // "Kök" (Root) düğümleri bul
+            // Map -> Array
+            parentMap.forEach(pNode => {
+                pNode.children = Array.from(pNode.childrenMap.values());
+            });
+
             const roots = [];
             for (const pId of allParents) {
                 if (!allChildren.has(pId)) {
@@ -140,38 +149,48 @@
                 }
             }
 
-            // Recursive Tree Data Builder for Tabulator
-            const buildTreeNode = (nodeId, rowData) => {
-                const nodeObj = parentMap.get(nodeId);
-                let item = { 
-                    id: Math.random().toString(36).substr(2, 9), // Tabulator benzersiz ID ister
-                    name: nodeObj ? nodeObj.label : (rowData ? rowData[childDimKey]?.label : nodeId)
-                };
-                
-                // Ölçümleri (Measures) Ekle
-                if (rowData) {
-                    measureKeys.forEach(mKey => {
-                        item[mKey] = rowData[mKey]?.raw || 0;
+            // Hangi matematiksel sütunlar toplanacak?
+            let fieldKeysToSum = [];
+            if (usePivot) {
+                if (measureKeys.length > 1) {
+                    dynamicColArray.forEach(colVal => {
+                        measureKeys.forEach(mKey => fieldKeysToSum.push(`${colVal}_${mKey}`));
                     });
                 } else {
-                    // Verisi olmayan Kök düğümler için başlangıçta 0 ata
-                    measureKeys.forEach(mKey => item[mKey] = 0);
+                    fieldKeysToSum = [...dynamicColArray];
+                }
+            } else {
+                fieldKeysToSum = [...measureKeys];
+            }
+
+            // Recursive Tree Data Builder
+            const buildTreeNode = (nodeId, childValues) => {
+                const nodeObj = parentMap.get(nodeId);
+                let item = { 
+                    id: Math.random().toString(36).substr(2, 9), 
+                    name: nodeObj ? nodeObj.label : (childValues ? childValues.label : nodeId)
+                };
+                
+                fieldKeysToSum.forEach(fKey => item[fKey] = 0);
+                
+                if (childValues) {
+                    fieldKeysToSum.forEach(fKey => {
+                        item[fKey] = childValues.values[fKey] || 0;
+                    });
                 }
                 
-                // Alt bileşenleri varsa _children dizisine ekle
                 if (nodeObj && nodeObj.children.length > 0) {
                     item._children = [];
                     nodeObj.children.forEach(child => {
-                        item._children.push(buildTreeNode(child.id, child.row));
+                        item._children.push(buildTreeNode(child.id, child));
                     });
                     
-                    // Alt birimlerin toplamını ana düğüme yansıt (Roll-up Aggregation)
-                    // Eğer ana düğümün kendi değeri yoksa (Kök ise), altlardan gelenleri topla
-                    if (!rowData) {
-                        measureKeys.forEach(mKey => {
+                    // Kökler için aşağıdan yukarıya toplama
+                    if (!childValues) {
+                        fieldKeysToSum.forEach(fKey => {
                             let sum = 0;
-                            item._children.forEach(c => sum += (c[mKey] || 0));
-                            item[mKey] = sum;
+                            item._children.forEach(c => sum += (c[fKey] || 0));
+                            item[fKey] = sum;
                         });
                     }
                 }
@@ -186,40 +205,62 @@
 
             // 2. DİNAMİK KOLONLARI OLUŞTUR
             const columns = [
-                { title: "Mamül / Bileşen", field: "name", width: 300, responsive: 0 }
+                { title: "Mamül / Bileşen", field: "name", width: 300 }
             ];
             
-            measureKeys.forEach(mKey => {
-                let mLabel = metadata.mainStructureMembers?.[mKey]?.label || mKey;
-                columns.push({ 
-                    title: mLabel, 
-                    field: mKey, 
-                    hozAlign: "right",
-                    formatter: "money", 
-                    formatterParams: { precision: 2, decimal: ",", thousand: "." }
+            if (usePivot) {
+                dynamicColArray.forEach(colVal => {
+                    if (measureKeys.length > 1) {
+                        measureKeys.forEach(mKey => {
+                            let mLabel = metadata.mainStructureMembers?.[mKey]?.label || mKey;
+                            columns.push({ 
+                                title: `${colVal} (${mLabel})`, 
+                                field: `${colVal}_${mKey}`, 
+                                hozAlign: "right",
+                                formatter: "money", 
+                                formatterParams: { precision: 2, decimal: ",", thousand: "." }
+                            });
+                        });
+                    } else {
+                        // Sadece miktar varsa Sütun adı Direkt Tarih (Ocak, Şubat) olur
+                        columns.push({ 
+                            title: colVal, 
+                            field: colVal, 
+                            hozAlign: "right",
+                            formatter: "money", 
+                            formatterParams: { precision: 2, decimal: ",", thousand: "." }
+                        });
+                    }
                 });
-            });
+            } else {
+                measureKeys.forEach(mKey => {
+                    let mLabel = metadata.mainStructureMembers?.[mKey]?.label || mKey;
+                    columns.push({ 
+                        title: mLabel, 
+                        field: mKey, 
+                        hozAlign: "right",
+                        formatter: "money", 
+                        formatterParams: { precision: 2, decimal: ",", thousand: "." }
+                    });
+                });
+            }
 
             // 3. TABULATOR GRID'İ BAŞLAT
             if (this.table) {
                 this.table.destroy();
             }
 
-            // İçeriği temizle
             this._container.innerHTML = "";
 
             this.table = new window.Tabulator(this._container, {
                 data: tableData,
                 layout: "fitColumns",
                 dataTree: true,
-                dataTreeStartExpanded: false, // Sadece kökler görünsün, açtıkça gelsin
-                dataTreeChildIndent: 25,      // Hiyerarşi girinti boyutu
+                dataTreeStartExpanded: false,
+                dataTreeChildIndent: 25,
                 columns: columns,
-                height: "100%",               // Virtual Scrolling için yüksekliğin set edilmesi şart
-                virtualDom: true,             // 100k+ satır için sihirli dokunuş
-                rowFormatter: function(row){
-                    // Seçime bağlı satır tasarımı
-                }
+                height: "100%", 
+                virtualDom: true
             });
         }
     }
