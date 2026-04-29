@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>SAC Tabulator - Yüksek Hacim (50.000 Satır) Testi</title>
+    <!-- Tabulator CSS -->
+    <link href="https://unpkg.com/tabulator-tables@5.5.0/dist/css/tabulator.min.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f9f9f9;
+            padding: 20px;
+        }
+        .widget-container {
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            padding: 20px;
+            width: 900px;
+            margin: 0 auto;
+            /* Yükseklik zorunludur! Tabulator virtual scrolling için container yüksekliğine bakar */
+            height: 700px; 
+            display: flex;
+            flex-direction: column;
+        }
+        h2 {
+            text-align: center;
+            color: #333;
+            margin-top: 0;
+        }
+        #info {
+            text-align: center;
+            color: #666;
+            margin-bottom: 10px;
+        }
+        #example-table {
+            flex-grow: 1; /* Kalan alanı kapla */
+            width: 100%;
+        }
+        /* Tabulator Custom Styling */
+        .tabulator { border: 1px solid #e0e0e0; }
+        .tabulator-header { background-color: #f4f6f9; color: #333; font-weight: 600; }
+        .tabulator-row.tabulator-tree-level-0 { font-weight: bold; background-color: #fdfdfd; }
+    </style>
+</head>
+<body>
+
+<div class="widget-container">
+    <h2>Ürün Ağacı - Yüksek Hacim Performans Testi</h2>
+    <div id="info">Sistem 50.000 satırlık hiyerarşik veri üretiyor, lütfen bekleyin...</div>
+    <div id="example-table"></div>
+</div>
+
+<!-- Tabulator JS -->
+<script type="text/javascript" src="https://unpkg.com/tabulator-tables@5.5.0/dist/js/tabulator.min.js"></script>
+<script>
+    // 1. 50.000 SATIRLIK SAHTE DÜZ VERİ (FLAT DATA) ÜRETİMİ
+    // Döngüye girmemesi (Sonsuz Rekürsiyon) için hiyerarşiyi koruyarak rastgele bağlıyoruz
+    const data = [];
+    let rowCount = 0;
+    
+    // Seviye 0: Kök Mamüller (M1 - M500)
+    for(let i=1; i<=500; i++) {
+        let pId = "M" + i;
+        let numChildren = 10 + Math.floor(Math.random()*40); // Her mamülün 10-50 arası bileşeni
+        for(let c=0; c<numChildren; c++) {
+            let cId = "YM1_" + Math.floor(Math.random()*1000);
+            data.push({ dim0: {id:pId, label:pId}, dim1: {id:cId, label:cId}, ocak: {raw: Math.random()*100}, subat: {raw: Math.random()*100} });
+            rowCount++;
+        }
+    }
+    
+    // Seviye 1: Yarı Mamüller 1 (YM1_1 - YM1_1000)
+    for(let i=1; i<=1000; i++) {
+        let pId = "YM1_" + i;
+        let numChildren = 5 + Math.floor(Math.random()*15); 
+        for(let c=0; c<numChildren; c++) {
+            let cId = "YM2_" + Math.floor(Math.random()*2000);
+            data.push({ dim0: {id:pId, label:pId}, dim1: {id:cId, label:cId}, ocak: {raw: Math.random()*50}, subat: {raw: Math.random()*50} });
+            rowCount++;
+        }
+    }
+    
+    // Seviye 2: Yarı Mamüller 2 (YM2_1 - YM2_2000)
+    for(let i=1; i<=2000; i++) {
+        let pId = "YM2_" + i;
+        let numChildren = 5 + Math.floor(Math.random()*15); 
+        for(let c=0; c<numChildren; c++) {
+            let cId = "HM_" + Math.floor(Math.random()*10000);
+            data.push({ dim0: {id:pId, label:pId}, dim1: {id:cId, label:cId}, ocak: {raw: Math.random()*10}, subat: {raw: Math.random()*10} });
+            rowCount++;
+        }
+    }
+
+    document.getElementById("info").innerText = `Tam ${rowCount.toLocaleString()} satırlık düz (flat) tablo verisi ağaç yapısına çevriliyor...`;
+
+    // 2. SAC WIDGET MANTIĞI: DÜZ VERİYİ TABULATOR AĞACINA ÇEVİRME
+    setTimeout(() => {
+        const dimKeys = ["dim0", "dim1"];
+        const measureKeys = ["ocak", "subat"];
+        const parentDimKey = dimKeys[0];
+        const childDimKey = dimKeys[1];
+
+        const parentMap = new Map();
+        const allChildren = new Set();
+        const allParents = new Set();
+
+        data.forEach(row => {
+            let pId = row[parentDimKey]?.id || "";
+            let cId = row[childDimKey]?.id || "";
+
+            if (!parentMap.has(pId)) {
+                parentMap.set(pId, { label: pId, children: [] });
+            }
+            
+            allParents.add(pId);
+            allChildren.add(cId);
+
+            parentMap.get(pId).children.push({
+                id: cId,
+                label: cId,
+                row: row
+            });
+        });
+
+        const roots = [];
+        for (const pId of allParents) {
+            if (!allChildren.has(pId)) {
+                roots.push(pId);
+            }
+        }
+
+        const buildTreeNode = (nodeId, rowData) => {
+            const nodeObj = parentMap.get(nodeId);
+            let item = { 
+                id: Math.random().toString(36).substr(2, 9), 
+                name: nodeObj ? nodeObj.label : (rowData ? rowData[childDimKey]?.label : nodeId)
+            };
+            
+            if (rowData) {
+                measureKeys.forEach(mKey => item[mKey] = rowData[mKey]?.raw || 0);
+            } else {
+                measureKeys.forEach(mKey => item[mKey] = 0);
+            }
+            
+            if (nodeObj && nodeObj.children.length > 0) {
+                item._children = [];
+                nodeObj.children.forEach(child => {
+                    item._children.push(buildTreeNode(child.id, child.row));
+                });
+                
+                if (!rowData) {
+                    measureKeys.forEach(mKey => {
+                        let sum = 0;
+                        item._children.forEach(c => sum += (c[mKey] || 0));
+                        item[mKey] = sum;
+                    });
+                }
+            }
+            return item;
+        };
+
+        const tableData = [];
+        roots.forEach(rId => {
+            tableData.push(buildTreeNode(rId, null));
+        });
+
+        document.getElementById("info").innerText = `${rowCount.toLocaleString()} satır başarıyla işlendi. Tablo çiziliyor...`;
+
+        // 3. TABULATOR BAŞLATMA
+        const columns = [
+            { title: "Mamül / Bileşen", field: "name", width: 300 },
+            { title: "Ocak Üretim", field: "ocak", hozAlign: "right", formatter: "money", formatterParams: { precision: 2, decimal: ",", thousand: "." } },
+            { title: "Şubat Üretim", field: "subat", hozAlign: "right", formatter: "money", formatterParams: { precision: 2, decimal: ",", thousand: "." } }
+        ];
+
+        var table = new Tabulator("#example-table", {
+            data: tableData,
+            layout: "fitColumns",
+            dataTree: true,
+            dataTreeStartExpanded: false,
+            dataTreeChildIndent: 25,
+            columns: columns,
+            height: "100%", // Virtual DOM için Kritik
+            virtualDom: true,
+            virtualDomBuffer: 300 // Yumuşak scroll
+        });
+
+        table.on("dataTreeRowExpanded", function(row, level){
+            // Sadece loglama amacıyla. Tabulator sanal render'ı kendi yönetir.
+        });
+
+        document.getElementById("info").innerText = `${rowCount.toLocaleString()} satır (Virtual Scrolling) ile başarıyla yüklendi. Test edebilirsiniz!`;
+
+    }, 500); // UI donmasın diye küçük bir bekleme süresi
+
+</script>
+</body>
+</html>

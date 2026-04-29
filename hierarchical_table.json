@@ -1,0 +1,48 @@
+{
+    "name": "HierarchicalTableWidget",
+    "description": "Hierarchical Table with 2 Dimensions and Measures",
+    "newInstancePrefix": "HierarchicalTable",
+    "eula": "",
+    "vendor": "Custom",
+    "license": "",
+    "id": "com.custom.hierarchicaltable",
+    "version": "1.0.0",
+    "icon": "",
+    "webcomponents": [
+        {
+            "kind": "main",
+            "tag": "custom-hierarchical-table",
+            "url": "/hierarchical_table.js",
+            "integrity": "",
+            "ignoreIntegrity": true
+        }
+    ],
+    "properties": {
+        "width": {
+            "type": "integer",
+            "default": 800
+        },
+        "height": {
+            "type": "integer",
+            "default": 400
+        }
+    },
+    "methods": {},
+    "events": {},
+    "dataBindings": {
+        "myDataSource": {
+            "feeds": [
+                {
+                    "id": "dimensions",
+                    "description": "Rows (1st: Material, 2nd: Component)",
+                    "type": "dimension"
+                },
+                {
+                    "id": "measures",
+                    "description": "Columns (Measures/Periods)",
+                    "type": "mainStructureMember"
+                }
+            ]
+        }
+    }
+}

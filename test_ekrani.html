@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>SAC Widget Test Ekranı</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f9f9f9;
+            padding: 20px;
+        }
+        .widget-container {
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            padding: 20px;
+            width: 800px;
+            margin: 0 auto;
+            max-height: 800px;
+            overflow: auto;
+        }
+        h2 {
+            text-align: center;
+            color: #333;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        th, td {
+            border-bottom: 1px solid #e0e0e0;
+            padding: 10px;
+            text-align: left;
+        }
+        th {
+            background-color: #f4f6f9;
+            position: sticky;
+            top: 0;
+            font-weight: 600;
+            color: #333;
+            z-index: 10;
+        }
+        tr:hover {
+            background-color: #f0f0f0;
+        }
+        .root-row {
+            font-weight: bold;
+            background-color: #fafafa;
+        }
+        .child-row {
+            background-color: #ffffff;
+        }
+        .is-parent {
+            cursor: pointer;
+        }
+        .toggle-icon {
+            display: inline-block;
+            width: 20px;
+            text-align: center;
+            margin-right: 5px;
+            color: #0070f2;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<div class="widget-container">
+    <h2>Ürün Ağacı (BOM) Test Görünümü</h2>
+    <div id="table-container"></div>
+</div>
+
+<script>
+    // Kullanıcının gönderdiği örnek tablo verisi (SAC'ın widget'a JSON olarak yolladığı formatta)
+    const data = [
+        { dim0: { id: "M1", label: "M1" }, dim1: { id: "YM1", label: "YM1" }, ocak: { raw: 15 }, subat: { raw: 19 } },
+        { dim0: { id: "M1", label: "M1" }, dim1: { id: "YM2", label: "YM2" }, ocak: { raw: 15 }, subat: { raw: 16 } },
+        { dim0: { id: "M1", label: "M1" }, dim1: { id: "YM3", label: "YM3" }, ocak: { raw: 20 }, subat: { raw: 10 } },
+        { dim0: { id: "M1", label: "M1" }, dim1: { id: "HM1", label: "HM1" }, ocak: { raw: 11 }, subat: { raw: 20 } },
+        { dim0: { id: "M1", label: "M1" }, dim1: { id: "HM2", label: "HM2" }, ocak: { raw: 11 }, subat: { raw: 12 } },
+        
+        { dim0: { id: "M2", label: "M2" }, dim1: { id: "YM1", label: "YM1" }, ocak: { raw: 10 }, subat: { raw: 13 } },
+        { dim0: { id: "M2", label: "M2" }, dim1: { id: "YM5", label: "YM5" }, ocak: { raw: 20 }, subat: { raw: 12 } },
+        
+        { dim0: { id: "YM1", label: "YM1" }, dim1: { id: "YM4", label: "YM4" }, ocak: { raw: 10 }, subat: { raw: 19 } },
+        { dim0: { id: "YM1", label: "YM1" }, dim1: { id: "HM2", label: "HM2" }, ocak: { raw: 17 }, subat: { raw: 20 } },
+        
+        { dim0: { id: "YM2", label: "YM2" }, dim1: { id: "HM1", label: "HM1" }, ocak: { raw: 18 }, subat: { raw: 16 } },
+        { dim0: { id: "YM2", label: "YM2" }, dim1: { id: "HM2", label: "HM2" }, ocak: { raw: 11 }, subat: { raw: 16 } },
+        
+        { dim0: { id: "YM4", label: "YM4" }, dim1: { id: "YM5", label: "YM5" }, ocak: { raw: 19 }, subat: { raw: 11 } },
+        { dim0: { id: "YM4", label: "YM4" }, dim1: { id: "HM2", label: "HM2" }, ocak: { raw: 13 }, subat: { raw: 15 } },
+        
+        { dim0: { id: "YM5", label: "YM5" }, dim1: { id: "HM6", label: "HM6" }, ocak: { raw: 15 }, subat: { raw: 11 } },
+        { dim0: { id: "YM5", label: "YM5" }, dim1: { id: "HM2", label: "HM2" }, ocak: { raw: 18 }, subat: { raw: 17 } },
+        { dim0: { id: "YM5", label: "YM5" }, dim1: { id: "HM3", label: "HM3" }, ocak: { raw: 14 }, subat: { raw: 10 } }
+    ];
+
+    // SAC'ın metadata'sını simüle ediyoruz
+    const dimKeys = ["dim0", "dim1"];
+    const measureKeys = ["ocak", "subat"];
+    const measureLabels = { "ocak": "Ocak", "subat": "Şubat" };
+
+    const parentDimKey = dimKeys[0]; 
+    const childDimKey = dimKeys[1];  
+
+    // 1. VERİYİ AĞAÇ YAPISINA ÇEVİRME
+    const parentMap = new Map();
+    const allChildren = new Set();
+    const allParents = new Set();
+
+    data.forEach(row => {
+        let pId = row[parentDimKey]?.id;
+        let cId = row[childDimKey]?.id;
+
+        if (!parentMap.has(pId)) {
+            parentMap.set(pId, { label: pId, children: [] });
+        }
+        
+        allParents.add(pId);
+        allChildren.add(cId);
+
+        parentMap.get(pId).children.push({
+            id: cId,
+            label: cId,
+            row: row
+        });
+    });
+
+    // Kök düğümleri bul (M1, M2)
+    const roots = [];
+    for (const pId of allParents) {
+        if (!allChildren.has(pId)) {
+            roots.push(pId);
+        }
+    }
+
+    // 2. HTML OLUŞTURMA (Recursive)
+    let html = `<table><thead><tr><th>Mamül / Bileşen</th>`;
+    measureKeys.forEach(mKey => {
+        html += `<th>${measureLabels[mKey]}</th>`;
+    });
+    html += `</tr></thead><tbody>`;
+
+    let rowCounter = 0;
+
+    const renderNode = (nodeId, nodeLabel, level, parentId, rowData) => {
+        rowCounter++;
+        const currentId = "node_" + rowCounter;
+        const nodeObj = parentMap.get(nodeId);
+        const hasChildren = nodeObj && nodeObj.children.length > 0;
+        
+        const visibilityClass = level === 0 ? "root-row" : "child-row";
+        const pClass = parentId ? `child-of-${parentId}` : "";
+        const isParentClass = hasChildren ? "is-parent" : "is-leaf";
+        
+        html += `<tr class="${visibilityClass} ${pClass} ${isParentClass}" id="${currentId}" data-parent="${parentId}" style="display: ${level === 0 ? 'table-row' : 'none'};">`;
+        
+        const indent = level * 30; // Daha net anlaşılsın diye 30px indent verdim
+        let toggleIcon = hasChildren ? `<span class="toggle-icon">[+]</span>` : `<span style="width:20px; display:inline-block;"></span>`;
+        
+        html += `<td style="padding-left: ${indent + 10}px;">${toggleIcon} ${nodeLabel}</td>`;
+        
+        measureKeys.forEach(mKey => {
+            let val = rowData ? (rowData[mKey]?.raw || 0) : "";
+            // Kök düğümdeyse boş bırakıyoruz (sizin tabloda karşılığı yoktu)
+            if(level === 0 && !rowData) val = "-"; 
+            html += `<td>${val}</td>`;
+        });
+        
+        html += `</tr>`;
+        
+        if (hasChildren) {
+            nodeObj.children.forEach(child => {
+                renderNode(child.id, child.label, level + 1, currentId, child.row);
+            });
+        }
+    };
+
+    // Render başlat
+    roots.forEach(rId => {
+        renderNode(rId, parentMap.get(rId).label, 0, "", null);
+    });
+
+    html += `</tbody></table>`;
+    document.getElementById("table-container").innerHTML = html;
+
+    // 3. EVENTLERİ BAĞLAMA
+    const containerRows = document.querySelectorAll("tr.is-parent");
+    containerRows.forEach(row => {
+        const icon = row.querySelector(".toggle-icon");
+        row.addEventListener("click", () => {
+            const rowId = row.getAttribute("id");
+            let isExpanded = icon.innerText === "[-]";
+            
+            if (isExpanded) {
+                // Kapat
+                icon.innerText = "[+]";
+                const hideDescendants = (parentId) => {
+                    const children = document.querySelectorAll(`.child-of-${parentId}`);
+                    children.forEach(cr => {
+                        cr.style.display = "none";
+                        const childIcon = cr.querySelector(".toggle-icon");
+                        if (childIcon) childIcon.innerText = "[+]";
+                        hideDescendants(cr.getAttribute("id"));
+                    });
+                };
+                hideDescendants(rowId);
+            } else {
+                // Aç
+                icon.innerText = "[-]";
+                const immediateChildren = document.querySelectorAll(`.child-of-${rowId}`);
+                immediateChildren.forEach(cr => cr.style.display = "table-row");
+            }
+        });
+    });
+</script>
+
+</body>
+</html>
