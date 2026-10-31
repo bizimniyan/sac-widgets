@@ -106,6 +106,7 @@
             .tabulator .tabulator-header .tabulator-col .tabulator-col-content { padding: 6px 8px 6px; }
             .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title { white-space: normal !important; line-height: 1.25; }
             .tabulator-row .tabulator-cell.soft { font-weight: 400; color: #6e6e6e; }
+            .tabulator-row .tabulator-cell.pstart, .tabulator .tabulator-header .tabulator-col.pgroup { box-shadow: inset 1px 0 0 #c6c6c6; }
             .tabulator .tabulator-header .tabulator-col:not(.tabulator-col-group)::after { content: ""; position: absolute; left: 3px; right: 3px; bottom: 0; border-bottom: 2px solid #595959; pointer-events: none; }
             .tabulator .tabulator-header .tabulator-col.tabulator-col-group > .tabulator-col-content { color: #7a7a7a; font-weight: 400; }
             .tabulator .tabulator-header .tabulator-col.tabulator-col-group .tabulator-col-group-cols { border-top: 0 !important; }
@@ -788,11 +789,12 @@
             dates.forEach(d => {
                 columns.push({
                     title: fmtDate(d),
-                    columns: this._params.map(p => {
+                    cssClass: "pgroup",
+                    columns: this._params.map((p, i) => {
                         this._valueFields.push(fieldOf(d, p));
                         return {
                             title: this._paramDesc.get(p) || p, headerTooltip: p, headerWordWrap: true, field: fieldOf(d, p), width: 112,
-                            hozAlign: "right", formatter: numFormatter, accessorClipboard: numCopy
+                            hozAlign: "right", formatter: numFormatter, accessorClipboard: numCopy, cssClass: i === 0 ? "pstart" : ""
                         };
                     })
                 });
