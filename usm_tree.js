@@ -34,6 +34,18 @@
         target[f] = (target[f] || 0) + r.ZMIKTAR;
     };
     const errText = (e) => e && e.message ? e.message : String(e);
+    const descFormatter = (cell) => {
+        const d = cell.getData();
+        if (d._kind === "P") return "";
+        const el = document.createElement("span");
+        if (d.desc === null || d.desc === undefined) {
+            el.className = "loading";
+            el.innerHTML = "<i></i>yükleniyor…";
+        } else {
+            el.textContent = d.desc;
+        }
+        return el;
+    };
 
     let template = document.createElement("template");
     template.innerHTML = `
@@ -51,6 +63,9 @@
             .tabulator-row.tabulator-tree-level-0 { font-weight: bold; }
             .tabulator-row.row-activity { color: #555; font-style: italic; }
             .tabulator-row.row-placeholder { color: #999; }
+            .loading { color: #999; font-style: italic; font-weight: normal; font-size: 12px; }
+            .loading i { display: inline-block; width: 8px; height: 8px; margin-right: 5px; vertical-align: -1px; border: 2px solid #ddd; border-top-color: #0a6ed1; border-radius: 50%; animation: spin .8s linear infinite; }
+            @keyframes spin { to { transform: rotate(360deg); } }
         </style>
         <div class="wrap">
             <div id="status">Yükleniyor…</div>
@@ -218,7 +233,9 @@
         }
 
         _row(key, type, id, dim, expandable) {
-            const row = { key, type: TYPE_LABEL[type], name: id, desc: this._desc[dim].get(id) || "", _id: id, _kind: type };
+            const cache = this._desc[dim];
+            const desc = type === "M" || !cache.has(id) ? null : cache.get(id);
+            const row = { key, type: TYPE_LABEL[type], name: id, desc, _id: id, _kind: type };
             if (expandable) row._children = [{ key: key + "/…", name: "Yükleniyor…", _kind: "P" }];
             return row;
         }
@@ -227,7 +244,7 @@
             this._destroyTable();
             const columns = [
                 { title: "Kod", field: "name", width: 190, frozen: true },
-                { title: "Açıklama", field: "desc", width: 280, frozen: true },
+                { title: "Açıklama", field: "desc", width: 280, frozen: true, formatter: descFormatter },
                 { title: "Tür", field: "type", width: 80, frozen: true }
             ];
             dates.forEach(d => {
