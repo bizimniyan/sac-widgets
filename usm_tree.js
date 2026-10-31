@@ -1,5 +1,5 @@
 (function () {
-    const TABULATOR_JS = "https://unpkg.com/tabulator-tables@5.5.0/dist/js/tabulator.min.js";
+    const TABULATOR_JS = "https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js";
     const NONE = "#";
     const CHILD_FILTER = " and (ZBILESEN ne '#' or ZMASRAF_OGESI ne '#')";
     const CHUNK = 40;
@@ -24,8 +24,12 @@
     const fieldOf = (date, param) => `v${date}_${param}`;
     const fmtDate = (d) => /^\d{6}$/.test(d) ? `${d.slice(4)}.${d.slice(0, 4)}` : d;
     const nf = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 3 });
+    const nfCopy = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 6, useGrouping: false });
+    const numCopy = (v) => v === undefined || v === null ? "" : nfCopy.format(v);
+    const textCopy = (v) => v === undefined || v === null ? "" : v;
     const numFormatter = (cell) => {
         const v = cell.getValue();
+        if (typeof v === "string") return v;
         return v === undefined || v === null ? "" : nf.format(v);
     };
     const addValue = (target, r) => {
@@ -49,7 +53,7 @@
 
     let template = document.createElement("template");
     template.innerHTML = `
-        <link href="https://unpkg.com/tabulator-tables@5.5.0/dist/css/tabulator.min.css" rel="stylesheet">
+        <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
         <style>
             :host { display: block; width: 100%; height: 100%; background-color: #fff; }
             .wrap { display: flex; flex-direction: column; width: 100%; height: 100%; font-family: "72", Arial, sans-serif; }
@@ -251,7 +255,7 @@
                 columns.push({
                     title: fmtDate(d),
                     columns: this._params.map(p => ({
-                        title: p, field: fieldOf(d, p), width: 95, hozAlign: "right", formatter: numFormatter
+                        title: p, field: fieldOf(d, p), width: 95, hozAlign: "right", formatter: numFormatter, accessorClipboard: numCopy
                     }))
                 });
             });
@@ -263,7 +267,13 @@
                 rowHeight: 26,
                 layout: "fitData",
                 columns: columns,
-                columnDefaults: { headerSort: false },
+                columnDefaults: { headerSort: false, resizable: "header", accessorClipboard: textCopy },
+                selectableRange: 1,
+                selectableRangeColumns: true,
+                clipboard: "copy",
+                clipboardCopyRowRange: "range",
+                clipboardCopyStyled: false,
+                clipboardCopyConfig: { columnHeaders: false, columnGroups: false, rowHeaders: false, columnCalcs: false, dataTree: false },
                 dataTree: true,
                 dataTreeStartExpanded: false,
                 dataTreeChildIndent: 22,
@@ -294,10 +304,24 @@
 
         _loadVisible() {
             if (!this._table || !this._table.initialized || this._failed) return;
-            const pos = this._table.getRows("visible").map(r => r.getData()._pos).filter(p => p !== undefined);
-            if (!pos.length) return;
-            const first = Math.floor(Math.min.apply(null, pos) / this._blockSize);
-            const last = Math.floor(Math.max.apply(null, pos) / this._blockSize);
+            const holder = this._tableEl.querySelector(".tabulator-tableholder");
+            const rows = this._table.getRows("display");
+            if (!holder || !rows.length) return;
+            const pitch = holder.scrollHeight / rows.length || 26;
+            const from = Math.max(0, Math.floor(holder.scrollTop / pitch));
+            const to = Math.min(rows.length - 1, Math.ceil((holder.scrollTop + holder.clientHeight) / pitch));
+            let min = Infinity, max = -Infinity;
+            for (let i = from; i <= to; i++) {
+                let r = rows[i];
+                while (r && r.getData()._pos === undefined) r = r.getTreeParent();
+                if (!r) continue;
+                const p = r.getData()._pos;
+                if (p < min) min = p;
+                if (p > max) max = p;
+            }
+            if (min === Infinity) return;
+            const first = Math.floor(min / this._blockSize);
+            const last = Math.floor(max / this._blockSize);
             for (let b = Math.max(0, first - 1); b <= last + 1; b++) this._loadBlock(b);
         }
 
