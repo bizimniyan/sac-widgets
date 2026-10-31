@@ -82,9 +82,13 @@
         });
         return tests.length ? id => tests.some(t => t(id)) : null;
     };
-    const normType = (t) => {
-        const c = String(t || "").trim().toLocaleUpperCase("tr-TR").charAt(0);
-        return c === "M" || c === "Y" ? c : "";
+    const TYPE_KEYS = ["M", "Y", "H"];
+    const TYPE_NAMES = { M: "Mamül", Y: "Yarımamül", H: "Hammadde" };
+    const TYPE_SHORT = { M: "M", Y: "YM", H: "HM" };
+    const parseTypes = (t) => {
+        const s = new Set();
+        splitList(t).forEach(x => { const c = x.toLocaleUpperCase("tr-TR").charAt(0); if (TYPE_NAMES[c]) s.add(c); });
+        return s.size ? s : null;
     };
     const runPool = async (tasks, n) => {
         let i = 0;
@@ -178,6 +182,7 @@
             .pop-f .primary { background: #ff0000; border-color: #ff0000; color: #fff; }
             .pop-f .primary:hover { background: #ff3333; }
             .kod-f .gbtn { flex: 1 1 auto; min-width: 0; text-align: left; padding: 1px 4px !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: normal; }
+            .kod-f .gbtn.tbtn { flex: 0 0 auto; width: 84px; }
             .kod-f .gbtn.on { border-color: #ff0000 !important; background: #ffe8e8 !important; }
             .gpop { width: 300px; }
             .gpop .hits b { flex: 1 1 auto; font-weight: normal; overflow: hidden; text-overflow: ellipsis; }
@@ -228,7 +233,7 @@
             this._table = null;
             this._token = 0;
             this._matFilter = "";
-            this._matType = "";
+            this._types = new Set(["M", "Y"]);
             this._compSet = new Set();
             this._allIds = [];
             this._ids = [];
@@ -268,26 +273,38 @@
                 this._matFilter = this.materialFilter || "";
                 this._kodInput.value = this._matFilter;
             }
-            if ("materialType" in changedProperties) {
-                this._matType = normType(this.materialType);
-                this._kodType.value = this._matType;
+            if ("materialType" in changedProperties || "onlyParents" in changedProperties) {
+                this._types = parseTypes(this.materialType) || new Set(this.onlyParents === false ? TYPE_KEYS : ["M", "Y"]);
+                this._updateTypeButton();
             }
-            if (["providerId", "version", "parameters", "pageSize", "onlyParents", "companyCode"].some(k => k in changedProperties)) {
-                clearTimeout(this._refreshTimer);
-                this._refreshTimer = setTimeout(() => this._reload(false), 150);
-            } else if ("materialFilter" in changedProperties || "materialType" in changedProperties) {
+            if (["providerId", "version", "parameters", "pageSize", "onlyParents", "companyCode", "materialType"].some(k => k in changedProperties)) {
+                this._scheduleReload();
+            } else if ("materialFilter" in changedProperties) {
                 this._applyFilter();
             }
         }
 
+        _scheduleReload() {
+            clearTimeout(this._refreshTimer);
+            this._refreshTimer = setTimeout(() => { if (!this._reload(false)) this._applyFilter(); }, 150);
+        }
+
         setMaterialType(type) {
-            this._matType = normType(type);
-            this._kodType.value = this._matType;
-            this._applyFilter();
+            this._types = parseTypes(type) || new Set(["M", "Y"]);
+            this._updateTypeButton();
+            this._scheduleReload();
         }
 
         getMaterialType() {
-            return this._matType;
+            return TYPE_KEYS.filter(k => this._types.has(k)).join(",");
+        }
+
+        _updateTypeButton() {
+            const keys = TYPE_KEYS.filter(k => this._types.has(k));
+            const btn = this._kodType;
+            btn.textContent = (keys.length === 3 ? "Tümü" : keys.length === 1 ? TYPE_NAMES[keys[0]] : keys.map(k => TYPE_SHORT[k]).join("+")) + " ▾";
+            btn.title = keys.map(k => TYPE_NAMES[k]).join(", ");
+            btn.classList.toggle("on", !(keys.length === 2 && this._types.has("M") && this._types.has("Y")));
         }
 
         onCustomWidgetResize() {
@@ -310,14 +327,19 @@
             let version = memberId(this.version);
             if (version && version.indexOf(".") < 0) version = "public." + version;
             const companies = splitList(this.companyCode).map(memberId).filter(Boolean).sort();
-            const sig = JSON.stringify([(this.providerId || "").trim(), version, splitList(this.parameters), this.pageSize, this.onlyParents !== false, companies]);
+            const sig = JSON.stringify([(this.providerId || "").trim(), version, splitList(this.parameters), this.pageSize, this._types.has("H"), companies]);
             return { version, companies, sig };
         }
 
-        async _reload(force) {
-            const { version, companies, sig } = this._loadParams();
-            if (!force && sig === this._loadSig) return;
-            this._loadSig = sig;
+        _reload(force) {
+            const p = this._loadParams();
+            if (!force && p.sig === this._loadSig) return false;
+            this._loadSig = p.sig;
+            this._doReload(p.version, p.companies);
+            return true;
+        }
+
+        async _doReload(version, companies) {
             if (this._abort) this._abort.abort();
             this._abort = new AbortController();
             const token = ++this._token;
@@ -336,7 +358,7 @@
             this._pid = (this.providerId || "").trim();
             this._params = splitList(this.parameters);
             this._blockSize = this.pageSize > 0 ? this.pageSize : 200;
-            this._onlyParents = this.onlyParents !== false;
+            this._onlyParents = !this._types.has("H");
 
             if (!this._pid || !version || !this._params.length) {
                 this._setStatus("Builder panelinden model, versiyon ve parametreleri girin.");
@@ -385,7 +407,8 @@
 
         _filteredIds() {
             const m = matcher(this._matFilter);
-            const t = this._matType;
+            const ty = this._types;
+            const t = !(ty.has("M") && ty.has("Y") && (ty.has("H") || this._onlyParents));
             const parents = this._parentSet;
             const comps = this._compSet;
             const g1 = this._attrsReady ? this._grp[1] : null;
@@ -393,7 +416,7 @@
             const attr = this._attr.ZMALZEME;
             if (!m && !t && !g1 && !g2) return this._allIds.slice();
             return this._allIds.filter(id => (!m || m(id)) &&
-                (!t || (parents.has(id) && (t === "M" ? !comps.has(id) : comps.has(id)))) &&
+                (!t || ty.has(parents.has(id) ? (comps.has(id) ? "Y" : "M") : "H")) &&
                 (!g1 || g1.has((attr.get(id) || {}).g1 || "")) &&
                 (!g2 || g2.has((attr.get(id) || {}).g2 || "")));
         }
@@ -443,7 +466,7 @@
 
         _applyFilter() {
             this._kodInput.classList.toggle("on", !!this._matFilter);
-            this._kodType.classList.toggle("on", !!this._matType);
+            this._updateTypeButton();
             if (!this._table || !this._allIds.length) return;
             this._ids = this._filteredIds();
             this._blocks = new Map();
@@ -600,20 +623,20 @@
 
         _buildKodHeader() {
             const el = document.createElement("div");
-            el.innerHTML = `<div>Kod</div><div class="kod-f"><select title="Mamül: başka malzemede bileşen değil · Yarımamül: hem bileşen hem altı var">` +
-                `<option value="">Tümü</option><option value="M">Mamül</option><option value="Y">Yarımamül</option></select>` +
+            el.innerHTML = `<div>Kod</div><div class="kod-f"><button class="gbtn tbtn"></button>` +
                 `<input type="text" placeholder="2*, 21000001-21000999"><button title="Çoklu seçim">⋯</button></div>`;
             const box = el.querySelector(".kod-f");
             this._kodInput = box.querySelector("input");
-            this._kodType = box.querySelector("select");
+            this._kodType = box.querySelector(".tbtn");
             stopEvents(box);
-            this._kodType.addEventListener("change", () => this.setMaterialType(this._kodType.value));
+            this._kodType.addEventListener("click", () => this._openGroupPopup("T", this._kodType));
+            this._updateTypeButton();
             this._kodInput.addEventListener("keydown", e => {
                 if (e.key === "Enter") this._setFilter(this._kodInput.value);
                 if (e.key === "Escape") { this._kodInput.value = this._matFilter; this._kodInput.blur(); }
             });
             this._kodInput.addEventListener("change", () => this._setFilter(this._kodInput.value));
-            box.querySelector("button").addEventListener("click", () => this._openPopup());
+            box.querySelector("button:not(.tbtn)").addEventListener("click", () => this._openPopup());
             this._kodHeaderEl = el;
         }
 
@@ -641,6 +664,12 @@
             $("gAll").addEventListener("click", () => { this._gValues.forEach(v => this._gEdit.add(v[0])); this._renderGroupList(); });
             $("gNone").addEventListener("click", () => { this._gEdit.clear(); this._renderGroupList(); });
             $("gOk").addEventListener("click", () => {
+                if (this._gLevel === "T") {
+                    if (!this._gEdit.size) return;
+                    close();
+                    this.setMaterialType(Array.from(this._gEdit).join(","));
+                    return;
+                }
                 close();
                 const all = this._gEdit.size === this._gValues.length;
                 this._setGroup(this._gLevel, all ? null : Array.from(this._gEdit));
@@ -657,14 +686,23 @@
         async _openGroupPopup(level, btn) {
             this._pop.hidden = true;
             this._gLevel = level;
-            this._root.getElementById("gTitle").textContent = this._gHeader[level].title + " seçimi";
+            this._root.getElementById("gTitle").textContent = (level === "T" ? "Tür" : this._gHeader[level].title) + " seçimi";
             const wrap = this._root.querySelector(".wrap").getBoundingClientRect();
             const r = btn.getBoundingClientRect();
             this._gpop.style.left = Math.max(8, Math.min(r.left - wrap.left, wrap.width - 308)) + "px";
             this._gSearchEl.value = "";
+            this._gSearchEl.style.display = level === "T" ? "none" : "";
             this._gListEl.innerHTML = "";
             this._gValues = [];
             this._gpop.hidden = false;
+            if (level === "T") {
+                const counts = { M: 0, Y: 0, H: 0 };
+                this._allIds.forEach(id => { counts[this._parentSet.has(id) ? (this._compSet.has(id) ? "Y" : "M") : "H"]++; });
+                this._gValues = TYPE_KEYS.map(k => [k, k === "H" && this._onlyParents ? null : counts[k], TYPE_NAMES[k]]);
+                this._gEdit = new Set(this._types);
+                this._renderGroupList();
+                return;
+            }
             if (!this._attrsReady) {
                 this._gInfoEl.textContent = "grup bilgileri yükleniyor…";
                 if (this._attrPromise) await this._attrPromise;
@@ -685,17 +723,17 @@
 
         _renderGroupList() {
             const term = this._gSearchEl.value.trim().toLocaleLowerCase("tr-TR");
-            const shown = this._gValues.filter(v => !term || groupLabel(v[0]).toLocaleLowerCase("tr-TR").indexOf(term) >= 0);
+            const shown = this._gValues.filter(v => !term || (v[2] || groupLabel(v[0])).toLocaleLowerCase("tr-TR").indexOf(term) >= 0);
             this._gListEl.innerHTML = "";
             const frag = document.createDocumentFragment();
-            shown.forEach(([v, n]) => {
+            shown.forEach(([v, n, text]) => {
                 const label = document.createElement("label");
                 label.innerHTML = `<input type="checkbox"><b></b><span></span>`;
                 const cb = label.querySelector("input");
                 cb.value = v;
                 cb.checked = this._gEdit.has(v);
-                label.querySelector("b").textContent = groupLabel(v);
-                label.querySelector("span").textContent = nf.format(n);
+                label.querySelector("b").textContent = text || groupLabel(v);
+                label.querySelector("span").textContent = n === null ? "" : nf.format(n);
                 frag.appendChild(label);
             });
             this._gListEl.appendChild(frag);
@@ -914,7 +952,7 @@
             });
             this._table.on("rowMouseLeave", () => clearTimeout(this._hoverTimer));
             this._kodInput.classList.toggle("on", !!this._matFilter);
-            this._kodType.classList.toggle("on", !!this._matType);
+            this._updateTypeButton();
             this._updateStatus();
         }
 

@@ -6,20 +6,20 @@
     "vendor": "Custom",
     "license": "",
     "id": "com.custom.usmtree",
-    "version": "1.6.2",
+    "version": "1.7.0",
     "icon": "",
     "webcomponents": [
         {
             "kind": "main",
             "tag": "custom-usm-tree",
-            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree.js?v=162",
+            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree.js?v=170",
             "integrity": "",
             "ignoreIntegrity": true
         },
         {
             "kind": "builder",
             "tag": "custom-usm-tree-builder",
-            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree_builder.js?v=162",
+            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree_builder.js?v=170",
             "integrity": "",
             "ignoreIntegrity": true
         }
@@ -105,17 +105,17 @@
             "returnType": "string"
         },
         "setMaterialType": {
-            "description": "Malzeme tipi filtresi: M = mamul, Y = yarimamul, bos = tumu",
+            "description": "Malzeme turu: M = mamul, Y = yarimamul, H = hammadde; virgulle coklu (orn. M,Y,H); bos = M,Y",
             "parameters": [
                 {
                     "name": "type",
                     "type": "string",
-                    "description": "M, Y veya bos"
+                    "description": "orn. M,Y veya H veya M,Y,H"
                 }
             ]
         },
         "getMaterialType": {
-            "description": "Gecerli malzeme tipi filtresini dondurur (M, Y veya bos)",
+            "description": "Secili turler (orn. M,Y)",
             "parameters": [],
             "returnType": "string"
         },
