@@ -32,7 +32,9 @@
     const numFormatter = (cell) => {
         const v = cell.getValue();
         if (typeof v === "string") return v;
-        return v === undefined || v === null ? "" : nf.format(v);
+        if (v !== undefined && v !== null) return nf.format(v);
+        const d = cell.getData();
+        return d._kind === "P" || (d._kind === "M" && d.desc === null) ? "" : `<span class="dash">–</span>`;
     };
     const addValue = (target, r) => {
         if (r.ZMIKTAR === null || r.ZMIKTAR === undefined) return;
@@ -92,24 +94,43 @@
         <style>
             :host { display: block; width: 100%; height: 100%; background-color: #fff; }
             .wrap { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; font-family: "72", Arial, sans-serif; }
-            #status { flex: 0 0 auto; font-size: 12px; color: #666; padding: 4px 8px; }
+            #status { flex: 0 0 auto; font-size: 11px; color: #9a9a9a; padding: 4px 6px; }
             #status.error { color: #bb0000; white-space: pre-wrap; }
-            #table { flex: 1 1 auto; min-height: 0; font-size: 13px; }
-            .tabulator { border: 1px solid #e0e0e0 !important; background-color: #fff; }
-            .tabulator-header { background-color: #f4f6f9 !important; color: #333; font-weight: 600; border-bottom: 2px solid #ddd !important; }
-            .tabulator-row { border-bottom: 1px solid #eee; }
-            .tabulator-row:hover { background-color: #f0f4f8 !important; }
-            .tabulator-row.tabulator-tree-level-0 { font-weight: bold; }
-            .tabulator-row.row-activity { color: #555; font-style: italic; }
-            .tabulator-row.row-placeholder { color: #999; }
+            #table { flex: 1 1 auto; min-height: 0; font-size: 12px; }
+            .tabulator { border: 0 !important; background: #fff !important; font-size: 12px; color: #333; }
+            .tabulator .tabulator-header { background: #fff !important; border-bottom: 0 !important; color: #333; font-weight: 600; }
+            .tabulator .tabulator-header .tabulator-col { background: #fff !important; border-right: 0 !important; }
+            .tabulator .tabulator-header .tabulator-col .tabulator-col-content { padding: 6px 8px 6px; }
+            .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title { white-space: normal !important; line-height: 1.25; }
+            .tabulator-row .tabulator-cell.soft { font-weight: 400; color: #6e6e6e; }
+            .tabulator .tabulator-header .tabulator-col:not(.tabulator-col-group)::after { content: ""; position: absolute; left: 3px; right: 3px; bottom: 0; border-bottom: 2px solid #595959; pointer-events: none; }
+            .tabulator .tabulator-header .tabulator-col.tabulator-col-group > .tabulator-col-content { color: #7a7a7a; font-weight: 400; }
+            .tabulator .tabulator-header .tabulator-col.tabulator-col-group .tabulator-col-group-cols { border-top: 0 !important; }
+            .tabulator .tabulator-header .tabulator-frozen.tabulator-frozen-left, .tabulator-row .tabulator-cell.tabulator-frozen.tabulator-frozen-left { border-right: 1px solid #efefef !important; }
+            .tabulator .tabulator-tableholder, .tabulator .tabulator-tableholder .tabulator-table { background: #fff !important; color: #333; }
+            .tabulator-row, .tabulator-row.tabulator-row-even, .tabulator-row.tabulator-row-odd { background: #fff !important; border-bottom: 0 !important; }
+            .tabulator-row .tabulator-cell { border-right: 0 !important; padding: 4px 8px; }
+            .tabulator-row .tabulator-cell::after { content: ""; position: absolute; left: 3px; right: 3px; bottom: 0; border-bottom: 1px solid #ececec; pointer-events: none; }
+            .tabulator-row:hover, .tabulator-row:hover .tabulator-cell.tabulator-frozen { background: #f7f9fb !important; }
+            .tabulator-row.tabulator-tree-level-0 { font-weight: 600; color: #262626; }
+            .tabulator-row:not(.tabulator-tree-level-0) { font-weight: 400; color: #5f5f5f; }
+            .tabulator-row.row-activity { color: #8c8c8c; font-style: italic; }
+            .tabulator-row.row-placeholder { color: #aaa; }
+            .tabulator-row .tabulator-data-tree-control { border: 1px solid #bdbdbd !important; background: #fff !important; }
+            .tabulator-row .tabulator-data-tree-control .tabulator-data-tree-control-expand, .tabulator-row .tabulator-data-tree-control .tabulator-data-tree-control-expand:after,
+            .tabulator-row .tabulator-data-tree-control .tabulator-data-tree-control-collapse, .tabulator-row .tabulator-data-tree-control .tabulator-data-tree-control-collapse:after { background: #7a7a7a !important; }
+            .tabulator-row .tabulator-data-tree-branch { border-color: #d6d6d6 !important; }
+            .tabulator-row .tabulator-cell.tabulator-range-selected:not(.tabulator-range-only-cell-selected) { background-color: #e4eefa !important; }
+            .tabulator .tabulator-header .tabulator-col.tabulator-range-highlight, .tabulator .tabulator-header .tabulator-col.tabulator-range-selected { background: #f1f6fc !important; color: inherit !important; }
+            .dash { color: #cfcfcf; font-weight: 400; }
             .loading { color: #999; font-style: italic; font-weight: normal; font-size: 12px; }
             .loading i { display: inline-block; width: 8px; height: 8px; margin-right: 5px; vertical-align: -1px; border: 2px solid #ddd; border-top-color: #0a6ed1; border-radius: 50%; animation: spin .8s linear infinite; }
             @keyframes spin { to { transform: rotate(360deg); } }
             .kod-f { display: flex; gap: 3px; margin-top: 6px; }
-            .kod-f input { flex: 1 1 auto; min-width: 0; font: 12px Arial, sans-serif; padding: 2px 4px; border: 1px solid #c4c4c4; border-radius: 3px; }
-            .kod-f select { flex: 0 0 auto; width: 76px; font: 11px Arial, sans-serif; padding: 1px 0; border: 1px solid #c4c4c4; border-radius: 3px; background: #fff; }
+            .kod-f input { flex: 1 1 auto; min-width: 0; font: 11px Arial, sans-serif; padding: 2px 4px; border: 1px solid #dadada; border-radius: 3px; color: #333; }
+            .kod-f select { flex: 0 0 auto; width: 76px; font: 11px Arial, sans-serif; padding: 1px 0; border: 1px solid #dadada; border-radius: 3px; background: #fff; color: #333; }
             .kod-f input.on, .kod-f select.on { border-color: #0a6ed1; background: #eef5fc; }
-            .kod-f button, .pop button { font: 12px Arial, sans-serif; cursor: pointer; border: 1px solid #c4c4c4; background: #fff; border-radius: 3px; }
+            .kod-f button, .pop button { font: 11px Arial, sans-serif; cursor: pointer; border: 1px solid #dadada; background: #fff; border-radius: 3px; color: #444; }
             .kod-f button { flex: 0 0 22px; padding: 0; line-height: 18px; }
             .kod-f button:hover, .pop button:hover { background: #eef5fc; }
             .pop { position: absolute; top: 28px; left: 8px; z-index: 20; width: 460px; max-width: calc(100% - 16px); max-height: calc(100% - 36px);
@@ -294,7 +315,7 @@
 
             try {
                 await loadScript(TABULATOR_JS);
-                const [dateRows, idRows, parentRows, compRows] = await Promise.all([
+                const [dateRows, idRows, parentRows, compRows, paramRows] = await Promise.all([
                     this._get("FactDataAggregation", { $select: "Date,ZMIKTAR", $filter: this._baseFilter, $orderby: "Date" }),
                     this._get("FactDataAggregation", {
                         $select: "ZMALZEME,ZMIKTAR",
@@ -302,8 +323,10 @@
                         $orderby: "ZMALZEME"
                     }),
                     this._onlyParents ? null : this._get("FactDataAggregation", { $select: "ZMALZEME,ZMIKTAR", $filter: this._baseFilter + CHILD_FILTER }),
-                    this._get("FactDataAggregation", { $select: "ZBILESEN,ZMIKTAR", $filter: this._baseFilter + " and ZBILESEN ne '#'" })
+                    this._get("FactDataAggregation", { $select: "ZBILESEN,ZMIKTAR", $filter: this._baseFilter + " and ZBILESEN ne '#'" }),
+                    this._get("ZPARAMETREMaster", { $select: "ID,Description", $filter: orEq("ID", this._params) }).catch(() => [])
                 ]);
+                this._paramDesc = new Map(paramRows.filter(r => r.Description).map(r => [r.ID, r.Description]));
                 if (token !== this._token) return;
                 const dates = dateRows.map(r => r.Date).filter(d => d && d !== NONE);
                 this._allIds = idRows.map(r => r.ZMALZEME).filter(id => id && id !== NONE);
@@ -749,16 +772,21 @@
             const columns = [
                 { title: "Kod", field: "name", width: 260, frozen: true, titleFormatter: () => this._kodHeaderEl },
                 { title: "Açıklama", field: "desc", width: 260, frozen: true, formatter: descFormatter },
-                { title: "Grup 1", field: "g1", width: 120, titleFormatter: () => this._gHeader[1].el },
-                { title: "Grup 2", field: "g2", width: 170, titleFormatter: () => this._gHeader[2].el },
-                { title: "Tür", field: "type", width: 75 }
+                { title: "Grup 1", field: "g1", width: 120, cssClass: "soft", titleFormatter: () => this._gHeader[1].el },
+                { title: "Grup 2", field: "g2", width: 170, cssClass: "soft", titleFormatter: () => this._gHeader[2].el },
+                { title: "Tür", field: "type", width: 75, cssClass: "soft" }
             ];
+            this._valueFields = [];
             dates.forEach(d => {
                 columns.push({
                     title: fmtDate(d),
-                    columns: this._params.map(p => ({
-                        title: p, field: fieldOf(d, p), width: 95, hozAlign: "right", formatter: numFormatter, accessorClipboard: numCopy
-                    }))
+                    columns: this._params.map(p => {
+                        this._valueFields.push(fieldOf(d, p));
+                        return {
+                            title: this._paramDesc.get(p) || p, headerTooltip: p, headerWordWrap: true, field: fieldOf(d, p), width: 112,
+                            hozAlign: "right", formatter: numFormatter, accessorClipboard: numCopy
+                        };
+                    })
                 });
             });
 
@@ -857,7 +885,8 @@
             try {
                 const [vals] = await Promise.all([this._fetchValues(ids), this._loadDescriptions("ZMALZEME", ids)]);
                 if (token !== this._token) return;
-                const updates = new Map(ids.map(id => [id, Object.assign({ key: `M${id}`, desc: this._desc.ZMALZEME.get(id) || "" }, this._attrOf("ZMALZEME", id))]));
+                const empty = Object.fromEntries(this._valueFields.map(f => [f, null]));
+                const updates = new Map(ids.map(id => [id, Object.assign({ key: `M${id}`, desc: this._desc.ZMALZEME.get(id) || "" }, empty, this._attrOf("ZMALZEME", id))]));
                 vals.forEach(r => { if (updates.has(r.ZMALZEME)) addValue(updates.get(r.ZMALZEME), r); });
                 updates.forEach((u, id) => this._valCache.set(id, u));
                 const visible = Array.from(updates.values()).filter(u => this._table.getRow(u.key));
