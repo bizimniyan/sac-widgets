@@ -6,20 +6,20 @@
     "vendor": "Custom",
     "license": "",
     "id": "com.custom.usmtree",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "icon": "",
     "webcomponents": [
         {
             "kind": "main",
             "tag": "custom-usm-tree",
-            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree.js?v=101",
+            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree.js?v=102",
             "integrity": "",
             "ignoreIntegrity": true
         },
         {
             "kind": "builder",
             "tag": "custom-usm-tree-builder",
-            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree_builder.js?v=101",
+            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree_builder.js?v=102",
             "integrity": "",
             "ignoreIntegrity": true
         }
@@ -30,7 +30,7 @@
         "providerId": { "type": "string", "default": "Cgo60cs80hp2214495dtio17t3c" },
         "version": { "type": "string", "default": "public.2027BUD_01" },
         "parameters": { "type": "string", "default": "USM0001,USM0015,USM0013,USM0014" },
-        "pageSize": { "type": "integer", "default": 100 },
+        "pageSize": { "type": "integer", "default": 200 },
         "onlyParents": { "type": "boolean", "default": true }
     },
     "methods": {

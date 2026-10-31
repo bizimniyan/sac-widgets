@@ -3,7 +3,7 @@
         { id: "providerId", label: "Model ProviderID" },
         { id: "version", label: "Versiyon (örn. public.2027BUD_01)" },
         { id: "parameters", label: "Parametreler (virgülle)" },
-        { id: "pageSize", label: "Sayfa boyutu (malzeme)" }
+        { id: "pageSize", label: "Blok boyutu (malzeme)" }
     ];
 
     const template = document.createElement("template");
@@ -33,7 +33,7 @@
                             providerId: val("providerId"),
                             version: val("version"),
                             parameters: val("parameters"),
-                            pageSize: parseInt(val("pageSize"), 10) || 100,
+                            pageSize: parseInt(val("pageSize"), 10) || 200,
                             onlyParents: this._shadowRoot.getElementById("onlyParents").checked
                         }
                     }

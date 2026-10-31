@@ -33,6 +33,7 @@
         const f = fieldOf(r.Date, r.ZPARAMETRE);
         target[f] = (target[f] || 0) + r.ZMIKTAR;
     };
+    const errText = (e) => e && e.message ? e.message : String(e);
 
     let template = document.createElement("template");
     template.innerHTML = `
@@ -81,17 +82,15 @@
 
         async refresh() {
             const token = ++this._token;
-            this._skip = 0;
-            this._count = 0;
-            this._done = false;
-            this._loading = false;
+            this._blocks = new Map();
+            this._ids = [];
             this._failed = false;
 
             this._pid = (this.providerId || "").trim();
             let version = (this.version || "").trim();
             if (version && version.indexOf(".") < 0) version = "public." + version;
             this._params = (this.parameters || "").split(",").map(s => s.trim()).filter(Boolean);
-            this._pageSize = this.pageSize > 0 ? this.pageSize : 100;
+            this._blockSize = this.pageSize > 0 ? this.pageSize : 200;
             this._onlyParents = this.onlyParents !== false;
 
             if (!this._pid || !version || !this._params.length) {
@@ -99,30 +98,45 @@
                 return;
             }
             this._baseFilter = `Version eq '${q(version)}' and ${orEq("ZPARAMETRE", this._params)}`;
-            this._setStatus("Yükleniyor…");
+            this._setStatus("Malzeme listesi yükleniyor…");
 
             try {
                 await loadScript(TABULATOR_JS);
-                const dates = (await this._get("FactDataAggregation", {
-                    $select: "Date,ZMIKTAR",
-                    $filter: this._baseFilter,
-                    $orderby: "Date"
-                })).map(r => r.Date).filter(d => d && d !== NONE);
+                const [dateRows, idRows, parentRows] = await Promise.all([
+                    this._get("FactDataAggregation", { $select: "Date,ZMIKTAR", $filter: this._baseFilter, $orderby: "Date" }),
+                    this._get("FactDataAggregation", {
+                        $select: "ZMALZEME,ZMIKTAR",
+                        $filter: this._baseFilter + (this._onlyParents ? CHILD_FILTER : ""),
+                        $orderby: "ZMALZEME"
+                    }),
+                    this._onlyParents ? null : this._get("FactDataAggregation", { $select: "ZMALZEME,ZMIKTAR", $filter: this._baseFilter + CHILD_FILTER })
+                ]);
                 if (token !== this._token) return;
-                if (!dates.length) {
+                const dates = dateRows.map(r => r.Date).filter(d => d && d !== NONE);
+                this._ids = idRows.map(r => r.ZMALZEME).filter(id => id && id !== NONE);
+                if (!dates.length || !this._ids.length) {
                     this._destroyTable();
                     this._setStatus(`${version} versiyonunda bu parametrelerle veri yok.`);
                     return;
                 }
-                this._buildTable(dates);
+                const expandable = parentRows ? new Set(parentRows.map(r => r.ZMALZEME)) : null;
+                const rows = this._ids.map((id, pos) =>
+                    Object.assign(this._row(`M${id}`, "M", id, "ZMALZEME", !expandable || expandable.has(id)), { _pos: pos }));
+                this._buildTable(dates, rows);
             } catch (e) {
-                this._setStatus("Yüklenemedi: " + (e && e.message ? e.message : e), true);
+                this._setStatus("Yüklenemedi: " + errText(e), true);
             }
         }
 
         _setStatus(text, isError) {
             this._statusEl.textContent = text;
             this._statusEl.className = isError ? "error" : "";
+        }
+
+        _updateStatus() {
+            if (this._failed) return;
+            const busy = Array.from(this._blocks.values()).some(s => s === "busy");
+            this._setStatus(`${nf.format(this._ids.length)} malzeme${busy ? " · değerler yükleniyor…" : ""}`);
         }
 
         _destroyTable() {
@@ -174,16 +188,16 @@
         }
 
         _row(key, type, id, dim, expandable) {
-            const desc = this._desc[dim].get(id);
-            const row = { key, type: TYPE_LABEL[type], name: desc ? `${id} - ${desc}` : id, _id: id, _kind: type };
+            const row = { key, type: TYPE_LABEL[type], name: id, desc: this._desc[dim].get(id) || "", _id: id, _kind: type };
             if (expandable) row._children = [{ key: key + "/…", name: "Yükleniyor…", _kind: "P" }];
             return row;
         }
 
-        _buildTable(dates) {
+        _buildTable(dates, rows) {
             this._destroyTable();
             const columns = [
-                { title: "Malzeme / Bileşen / Aktivite", field: "name", width: 360, frozen: true },
+                { title: "Kod", field: "name", width: 190, frozen: true },
+                { title: "Açıklama", field: "desc", width: 280, frozen: true },
                 { title: "Tür", field: "type", width: 80, frozen: true }
             ];
             dates.forEach(d => {
@@ -197,7 +211,7 @@
 
             this._table = new window.Tabulator(this._tableEl, {
                 index: "key",
-                data: [],
+                data: rows,
                 height: "100%",
                 layout: "fitData",
                 columns: columns,
@@ -213,59 +227,52 @@
                     if (k === "P") row.getElement().classList.add("row-placeholder");
                 }
             });
-            this._table.on("tableBuilt", () => this._loadPage());
-            this._table.on("scrollVertical", () => this._maybeLoad());
+            this._table.on("tableBuilt", () => this._loadVisible());
+            this._table.on("scrollVertical", () => {
+                if (this._scrollTimer) return;
+                this._scrollTimer = setTimeout(() => {
+                    this._scrollTimer = null;
+                    this._loadVisible();
+                }, 100);
+            });
             this._table.on("dataTreeRowExpanded", (row) => this._expand(row));
+            this._updateStatus();
         }
 
-        _maybeLoad() {
-            if (this._loading || this._done || this._failed || !this._table) return;
-            const holder = this._tableEl.querySelector(".tabulator-tableholder");
-            if (!holder) return;
-            if (holder.scrollTop + holder.clientHeight >= holder.scrollHeight - 400) this._loadPage();
+        _loadVisible() {
+            if (!this._table || !this._table.initialized || this._failed) return;
+            const pos = this._table.getRows("visible").map(r => r.getData()._pos).filter(p => p !== undefined);
+            if (!pos.length) return;
+            const first = Math.floor(Math.min.apply(null, pos) / this._blockSize);
+            const last = Math.floor(Math.max.apply(null, pos) / this._blockSize);
+            for (let b = Math.max(0, first - 1); b <= last + 1; b++) this._loadBlock(b);
         }
 
-        async _loadPage() {
-            if (this._loading || this._done || this._failed) return;
-            this._loading = true;
+        async _loadBlock(b) {
+            const start = b * this._blockSize;
+            if (start >= this._ids.length || this._blocks.has(b)) return;
+            this._blocks.set(b, "busy");
+            this._updateStatus();
             const token = this._token;
+            const ids = this._ids.slice(start, start + this._blockSize);
+            const range = ` and ZMALZEME ge '${q(ids[0])}' and ZMALZEME le '${q(ids[ids.length - 1])}'`;
             try {
-                const ids = (await this._get("FactDataAggregation", {
-                    $select: "ZMALZEME,ZMIKTAR",
-                    $filter: this._baseFilter + (this._onlyParents ? CHILD_FILTER : ""),
-                    $orderby: "ZMALZEME",
-                    $skip: this._skip,
-                    $top: this._pageSize
-                })).map(r => r.ZMALZEME);
+                const [vals] = await Promise.all([
+                    this._get("FactDataAggregation", { $select: "ZMALZEME,Date,ZPARAMETRE,ZMIKTAR", $filter: this._baseFilter + range }),
+                    this._loadDescriptions("ZMALZEME", ids)
+                ]);
                 if (token !== this._token) return;
-                this._skip += ids.length;
-                if (ids.length < this._pageSize) this._done = true;
-
-                const shown = ids.filter(id => id && id !== NONE);
-                if (shown.length) {
-                    const range = ` and ZMALZEME ge '${q(shown[0])}' and ZMALZEME le '${q(shown[shown.length - 1])}'`;
-                    const [vals, parents] = await Promise.all([
-                        this._get("FactDataAggregation", { $select: "ZMALZEME,Date,ZPARAMETRE,ZMIKTAR", $filter: this._baseFilter + range }),
-                        this._onlyParents
-                            ? shown.map(id => ({ ZMALZEME: id }))
-                            : this._get("FactDataAggregation", { $select: "ZMALZEME,ZMIKTAR", $filter: this._baseFilter + range + CHILD_FILTER }),
-                        this._loadDescriptions("ZMALZEME", shown)
-                    ]);
-                    if (token !== this._token) return;
-                    const expandable = new Set(parents.map(r => r.ZMALZEME));
-                    const rows = new Map(shown.map(id => [id, this._row(`M${id}`, "M", id, "ZMALZEME", expandable.has(id))]));
-                    vals.forEach(r => { if (rows.has(r.ZMALZEME)) addValue(rows.get(r.ZMALZEME), r); });
-                    await this._table.addData(Array.from(rows.values()));
-                    this._count += shown.length;
-                }
-                this._setStatus(`${nf.format(this._count)} malzeme yüklendi${this._done ? " (tamamı)" : " — devamı kaydırdıkça gelir"}`);
+                const updates = new Map(ids.map(id => [id, { key: `M${id}`, desc: this._desc.ZMALZEME.get(id) || "" }]));
+                vals.forEach(r => { if (updates.has(r.ZMALZEME)) addValue(updates.get(r.ZMALZEME), r); });
+                await this._table.updateData(Array.from(updates.values()));
+                this._blocks.set(b, "done");
+                this._updateStatus();
             } catch (e) {
+                if (token !== this._token) return;
+                this._blocks.delete(b);
                 this._failed = true;
-                this._setStatus("Yüklenemedi: " + (e && e.message ? e.message : e), true);
-            } finally {
-                if (token === this._token) this._loading = false;
+                this._setStatus("Yüklenemedi: " + errText(e), true);
             }
-            if (token === this._token) setTimeout(() => this._maybeLoad(), 0);
         }
 
         async _expand(row) {
@@ -303,7 +310,7 @@
             } catch (e) {
                 d._busy = false;
                 if (token !== this._token) return;
-                await row.update({ _children: [{ key: d.key + "/!", name: "Hata: " + (e && e.message ? e.message : e), _kind: "P" }] });
+                await row.update({ _children: [{ key: d.key + "/!", name: "Hata: " + errText(e), _kind: "P" }] });
             }
         }
     }
