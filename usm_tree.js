@@ -274,7 +274,7 @@
             }
             if (["providerId", "version", "parameters", "pageSize", "onlyParents", "companyCode"].some(k => k in changedProperties)) {
                 clearTimeout(this._refreshTimer);
-                this._refreshTimer = setTimeout(() => this.refresh(), 0);
+                this._refreshTimer = setTimeout(() => this._reload(false), 150);
             } else if ("materialFilter" in changedProperties || "materialType" in changedProperties) {
                 this._applyFilter();
             }
@@ -302,7 +302,24 @@
             return this._matFilter;
         }
 
-        async refresh() {
+        refresh() {
+            return this._reload(true);
+        }
+
+        _loadParams() {
+            let version = memberId(this.version);
+            if (version && version.indexOf(".") < 0) version = "public." + version;
+            const companies = splitList(this.companyCode).map(memberId).filter(Boolean).sort();
+            const sig = JSON.stringify([(this.providerId || "").trim(), version, splitList(this.parameters), this.pageSize, this.onlyParents !== false, companies]);
+            return { version, companies, sig };
+        }
+
+        async _reload(force) {
+            const { version, companies, sig } = this._loadParams();
+            if (!force && sig === this._loadSig) return;
+            this._loadSig = sig;
+            if (this._abort) this._abort.abort();
+            this._abort = new AbortController();
             const token = ++this._token;
             this._blocks = new Map();
             this._allIds = [];
@@ -317,12 +334,9 @@
             this._matValsError = null;
 
             this._pid = (this.providerId || "").trim();
-            let version = memberId(this.version);
-            if (version && version.indexOf(".") < 0) version = "public." + version;
             this._params = splitList(this.parameters);
             this._blockSize = this.pageSize > 0 ? this.pageSize : 200;
             this._onlyParents = this.onlyParents !== false;
-            const companies = splitList(this.companyCode).map(memberId).filter(Boolean);
 
             if (!this._pid || !version || !this._params.length) {
                 this._setStatus("Builder panelinden model, versiyon ve parametreleri girin.");
@@ -363,6 +377,8 @@
                 this._loadAllActivityDescriptions();
                 this._attrPromise = this._loadParentAttrs(token);
             } catch (e) {
+                if (token !== this._token) return;
+                this._loadSig = null;
                 this._setStatus("Yüklenemedi: " + errText(e), true);
             }
         }
@@ -507,7 +523,7 @@
             let url = `${window.location.origin}/api/v1/dataexport/providers/sac/${encodeURIComponent(this._pid)}/${path}?${qs}`;
             const out = [];
             while (url) {
-                const resp = await fetch(url, { method: "GET", credentials: "include", headers: { Accept: "application/json" } });
+                const resp = await fetch(url, { method: "GET", credentials: "include", headers: { Accept: "application/json" }, signal: this._abort && this._abort.signal });
                 if (!resp.ok) {
                     const body = await resp.text();
                     throw new Error(`HTTP ${resp.status} ${body.slice(0, 300)}`);
@@ -810,7 +826,7 @@
                     ? `${hits.length} malzeme${more ? ` (ilk ${MAX_HITS} gösteriliyor, aramayı daraltın)` : ""}`
                     : "Eşleşen malzeme yok.";
             } catch (e) {
-                if (token === this._searchToken) this._hitInfoEl.textContent = "Arama hatası: " + errText(e);
+                if (token === this._searchToken && !(e && e.name === "AbortError")) this._hitInfoEl.textContent = "Arama hatası: " + errText(e);
             }
         }
 
