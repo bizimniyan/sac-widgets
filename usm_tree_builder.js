@@ -2,6 +2,7 @@
     const FIELDS = [
         { id: "providerId", label: "Model ProviderID" },
         { id: "version", label: "Versiyon (örn. public.2027BUD_01)" },
+        { id: "companyCode", label: "Şirket kodu (boş = hepsi, virgülle çoklu)" },
         { id: "parameters", label: "Parametreler (virgülle)" },
         { id: "pageSize", label: "Blok boyutu (malzeme)" }
     ];
@@ -32,6 +33,7 @@
                         properties: {
                             providerId: val("providerId"),
                             version: val("version"),
+                            companyCode: val("companyCode"),
                             parameters: val("parameters"),
                             pageSize: parseInt(val("pageSize"), 10) || 200,
                             onlyParents: this._shadowRoot.getElementById("onlyParents").checked

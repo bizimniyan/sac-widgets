@@ -3,6 +3,7 @@
     const NONE = "#";
     const CHILD_FILTER = " and (ZBILESEN ne '#' or ZMASRAF_OGESI ne '#')";
     const CHUNK = 40;
+    const MAX_HITS = 200;
     const TYPE_LABEL = { M: "Malzeme", B: "Bileşen", A: "Aktivite" };
 
     const loadScript = (src) => new Promise((resolve, reject) => {
@@ -21,6 +22,7 @@
         for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
         return out;
     };
+    const splitList = (text) => String(text || "").split(/[;,\n]/).map(s => s.trim()).filter(Boolean);
     const fieldOf = (date, param) => `v${date}_${param}`;
     const fmtDate = (d) => /^\d{6}$/.test(d) ? `${d.slice(4)}.${d.slice(0, 4)}` : d;
     const nf = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 3 });
@@ -51,12 +53,35 @@
         return el;
     };
 
+    const cmpCode = (a, b) => {
+        if (/^\d+$/.test(a) && /^\d+$/.test(b) && a.length !== b.length) return a.length - b.length;
+        return a < b ? -1 : a > b ? 1 : 0;
+    };
+    const parseToken = (tok) => {
+        const m = tok.indexOf("*") < 0 ? tok.match(/^(.+?)\s*-\s*(.+)$/) : null;
+        return m ? { low: m[1].trim(), high: m[2].trim() } : { low: tok, high: "" };
+    };
+    const tokenText = (s) => s.high ? `${s.low}-${s.high}` : s.low;
+    const matcher = (text) => {
+        const tests = splitList(text).map(parseToken).map(s => {
+            if (s.high) return id => cmpCode(id, s.low) >= 0 && cmpCode(id, s.high) <= 0;
+            if (/[*?]/.test(s.low)) {
+                const re = new RegExp("^" + s.low.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$", "i");
+                return id => re.test(id);
+            }
+            return id => id === s.low;
+        });
+        return tests.length ? id => tests.some(t => t(id)) : null;
+    };
+    const stopEvents = (el) => ["mousedown", "mouseup", "click", "dblclick", "keydown", "keyup", "keypress", "contextmenu"]
+        .forEach(ev => el.addEventListener(ev, e => e.stopPropagation()));
+
     let template = document.createElement("template");
     template.innerHTML = `
         <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
         <style>
             :host { display: block; width: 100%; height: 100%; background-color: #fff; }
-            .wrap { display: flex; flex-direction: column; width: 100%; height: 100%; font-family: "72", Arial, sans-serif; }
+            .wrap { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; font-family: "72", Arial, sans-serif; }
             #status { flex: 0 0 auto; font-size: 12px; color: #666; padding: 4px 8px; }
             #status.error { color: #bb0000; white-space: pre-wrap; }
             #table { flex: 1 1 auto; min-height: 0; font-size: 13px; }
@@ -70,10 +95,59 @@
             .loading { color: #999; font-style: italic; font-weight: normal; font-size: 12px; }
             .loading i { display: inline-block; width: 8px; height: 8px; margin-right: 5px; vertical-align: -1px; border: 2px solid #ddd; border-top-color: #0a6ed1; border-radius: 50%; animation: spin .8s linear infinite; }
             @keyframes spin { to { transform: rotate(360deg); } }
+            .kod-f { display: flex; gap: 3px; margin-top: 6px; }
+            .kod-f input { flex: 1 1 auto; min-width: 0; font: 12px Arial, sans-serif; padding: 2px 4px; border: 1px solid #c4c4c4; border-radius: 3px; }
+            .kod-f input.on { border-color: #0a6ed1; background: #eef5fc; }
+            .kod-f button, .pop button { font: 12px Arial, sans-serif; cursor: pointer; border: 1px solid #c4c4c4; background: #fff; border-radius: 3px; }
+            .kod-f button { flex: 0 0 22px; padding: 0; line-height: 18px; }
+            .kod-f button:hover, .pop button:hover { background: #eef5fc; }
+            .pop { position: absolute; top: 28px; left: 8px; z-index: 20; width: 460px; max-width: calc(100% - 16px); max-height: calc(100% - 36px);
+                   display: flex; flex-direction: column; background: #fff; border: 1px solid #bbb; border-radius: 4px; box-shadow: 0 4px 16px rgba(0,0,0,.18); font: 12px Arial, sans-serif; color: #222; }
+            .pop[hidden] { display: none; }
+            .pop-h { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; font-weight: bold; border-bottom: 1px solid #eee; }
+            .pop-h .x { border: 0; font-size: 16px; line-height: 16px; }
+            .pop-b { padding: 6px 10px; overflow: auto; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+            .pop-b > * { flex-shrink: 0; }
+            .pop-sec { font-weight: bold; margin: 6px 0 4px; color: #444; }
+            .pop-sec small { font-weight: normal; color: #888; }
+            .sel-row { display: flex; gap: 4px; align-items: center; margin-bottom: 3px; }
+            .sel-row input { width: 140px; font: 12px Arial, sans-serif; padding: 2px 4px; border: 1px solid #c4c4c4; border-radius: 3px; }
+            .sel-row button { padding: 0 6px; }
+            .sel-rows { max-height: 120px; overflow: auto; }
+            .link { align-self: flex-start; margin-top: 2px; padding: 1px 8px; }
+            #search { font: 12px Arial, sans-serif; padding: 3px 5px; border: 1px solid #c4c4c4; border-radius: 3px; }
+            .pop-b > .hits { margin-top: 4px; border: 1px solid #eee; overflow: auto; flex: 1 1 auto; min-height: 90px; }
+            .hits label { display: flex; gap: 6px; align-items: center; padding: 2px 6px; cursor: pointer; white-space: nowrap; }
+            .hits label:nth-child(even) { background: #fafafa; }
+            .hits label:hover { background: #eef5fc; }
+            .hits b { flex: 0 0 72px; font-weight: 600; }
+            .hits span { overflow: hidden; text-overflow: ellipsis; color: #444; }
+            .hit-info { color: #888; margin-top: 3px; min-height: 14px; }
+            .pop-f { display: flex; gap: 6px; padding: 6px 10px; border-top: 1px solid #eee; }
+            .pop-f .sp { flex: 1; }
+            .pop-f button { padding: 3px 12px; }
+            .pop-f .primary { background: #0a6ed1; border-color: #0a6ed1; color: #fff; }
+            .pop-f .primary:hover { background: #085caf; }
         </style>
         <div class="wrap">
             <div id="status">Yükleniyor…</div>
             <div id="table"></div>
+            <div id="pop" class="pop" hidden>
+                <div class="pop-h">Malzeme seçimi <button class="x" id="popClose" title="Kapat">×</button></div>
+                <div class="pop-b">
+                    <div class="pop-sec">Seçimler <small>(tek kod, 2* veya alt – üst aralık)</small></div>
+                    <div id="selRows" class="sel-rows"></div>
+                    <button id="addRow" class="link">+ satır</button>
+                    <div class="pop-sec">Malzeme ara <small>(kod veya tanım; işaretle = seçimlere ekle)</small></div>
+                    <input id="search" type="text" placeholder="örn. 2100253 veya DAVLUMBAZ">
+                    <div id="hits" class="hits"></div>
+                    <div id="hitInfo" class="hit-info"></div>
+                </div>
+                <div class="pop-f">
+                    <button id="popClear">Temizle</button><span class="sp"></span>
+                    <button id="popCancel">İptal</button><button id="popOk" class="primary">Uygula</button>
+                </div>
+            </div>
         </div>
     `;
 
@@ -82,16 +156,29 @@
             super();
             let shadowRoot = this.attachShadow({ mode: "open" });
             shadowRoot.appendChild(template.content.cloneNode(true));
+            this._root = shadowRoot;
             this._statusEl = shadowRoot.getElementById("status");
             this._tableEl = shadowRoot.getElementById("table");
             this._table = null;
             this._token = 0;
+            this._matFilter = "";
+            this._allIds = [];
+            this._ids = [];
             this._desc = { ZMALZEME: new Map(), ZBILESEN: new Map(), ZMASRAF_OGESI: new Map() };
+            this._buildKodHeader();
+            this._initPopup();
         }
 
         onCustomWidgetAfterUpdate(changedProperties) {
-            if (["providerId", "version", "parameters", "pageSize", "onlyParents"].some(k => k in changedProperties)) {
-                this.refresh();
+            if ("materialFilter" in changedProperties) {
+                this._matFilter = this.materialFilter || "";
+                this._kodInput.value = this._matFilter;
+            }
+            if (["providerId", "version", "parameters", "pageSize", "onlyParents", "companyCode"].some(k => k in changedProperties)) {
+                clearTimeout(this._refreshTimer);
+                this._refreshTimer = setTimeout(() => this.refresh(), 0);
+            } else if ("materialFilter" in changedProperties) {
+                this._applyFilter();
             }
         }
 
@@ -99,10 +186,20 @@
             if (this._table) this._table.redraw();
         }
 
+        setMaterialFilter(filter) {
+            this._setFilter(filter);
+        }
+
+        getMaterialFilter() {
+            return this._matFilter;
+        }
+
         async refresh() {
             const token = ++this._token;
             this._blocks = new Map();
+            this._allIds = [];
             this._ids = [];
+            this._valCache = new Map();
             this._parentSet = new Set();
             this._childCache = new Map();
             this._failed = false;
@@ -110,15 +207,17 @@
             this._pid = (this.providerId || "").trim();
             let version = (this.version || "").trim();
             if (version && version.indexOf(".") < 0) version = "public." + version;
-            this._params = (this.parameters || "").split(",").map(s => s.trim()).filter(Boolean);
+            this._params = splitList(this.parameters);
             this._blockSize = this.pageSize > 0 ? this.pageSize : 200;
             this._onlyParents = this.onlyParents !== false;
+            const companies = splitList(this.companyCode);
 
             if (!this._pid || !version || !this._params.length) {
                 this._setStatus("Builder panelinden model, versiyon ve parametreleri girin.");
                 return;
             }
-            this._baseFilter = `Version eq '${q(version)}' and ${orEq("ZPARAMETRE", this._params)}`;
+            this._baseFilter = `Version eq '${q(version)}' and ${orEq("ZPARAMETRE", this._params)}` +
+                (companies.length ? ` and ${orEq("ZSIRKET_KODU", companies)}` : "");
             this._setStatus("Malzeme listesi yükleniyor…");
 
             try {
@@ -134,20 +233,40 @@
                 ]);
                 if (token !== this._token) return;
                 const dates = dateRows.map(r => r.Date).filter(d => d && d !== NONE);
-                this._ids = idRows.map(r => r.ZMALZEME).filter(id => id && id !== NONE);
-                if (!dates.length || !this._ids.length) {
+                this._allIds = idRows.map(r => r.ZMALZEME).filter(id => id && id !== NONE);
+                if (!dates.length || !this._allIds.length) {
                     this._destroyTable();
-                    this._setStatus(`${version} versiyonunda bu parametrelerle veri yok.`);
+                    this._setStatus(`${version}${companies.length ? " / " + companies.join(",") : ""} için bu parametrelerle veri yok.`);
                     return;
                 }
-                this._parentSet = new Set(parentRows ? parentRows.map(r => r.ZMALZEME) : this._ids);
-                const rows = this._ids.map((id, pos) =>
-                    Object.assign(this._row(`M${id}`, "M", id, "ZMALZEME", this._parentSet.has(id)), { _pos: pos }));
-                this._buildTable(dates, rows);
+                this._allIndex = new Map(this._allIds.map((id, i) => [id, i]));
+                this._parentSet = new Set(parentRows ? parentRows.map(r => r.ZMALZEME) : this._allIds);
+                this._ids = this._filteredIds();
+                this._buildTable(dates, this._ids.map((id, pos) => this._mRow(id, pos)));
                 this._loadAllActivityDescriptions();
             } catch (e) {
                 this._setStatus("Yüklenemedi: " + errText(e), true);
             }
+        }
+
+        _filteredIds() {
+            const m = matcher(this._matFilter);
+            return m ? this._allIds.filter(m) : this._allIds.slice();
+        }
+
+        _setFilter(text) {
+            this._matFilter = splitList(text).join("; ");
+            this._kodInput.value = this._matFilter;
+            this._applyFilter();
+        }
+
+        _applyFilter() {
+            this._kodInput.classList.toggle("on", !!this._matFilter);
+            if (!this._table || !this._allIds.length) return;
+            this._ids = this._filteredIds();
+            this._blocks = new Map();
+            this._table.replaceData(this._ids.map((id, pos) => this._mRow(id, pos))).then(() => this._loadVisible());
+            this._updateStatus();
         }
 
         _setStatus(text, isError) {
@@ -158,7 +277,10 @@
         _updateStatus() {
             if (this._failed) return;
             const busy = Array.from(this._blocks.values()).some(s => s === "busy");
-            this._setStatus(`${nf.format(this._ids.length)} malzeme${busy ? " · değerler yükleniyor…" : ""}`);
+            const count = this._ids.length === this._allIds.length
+                ? nf.format(this._allIds.length)
+                : `${nf.format(this._ids.length)} / ${nf.format(this._allIds.length)}`;
+            this._setStatus(`${count} malzeme${busy ? " · değerler yükleniyor…" : ""}`);
         }
 
         _destroyTable() {
@@ -244,10 +366,174 @@
             return row;
         }
 
+        _mRow(id, pos) {
+            return Object.assign(this._row(`M${id}`, "M", id, "ZMALZEME", this._parentSet.has(id)), this._valCache.get(id) || {}, { _pos: pos });
+        }
+
+        _buildKodHeader() {
+            const el = document.createElement("div");
+            el.innerHTML = `<div>Kod</div><div class="kod-f"><input type="text" placeholder="2*, 21000001-21000999"><button title="Çoklu seçim">⋯</button></div>`;
+            const box = el.querySelector(".kod-f");
+            this._kodInput = box.querySelector("input");
+            stopEvents(box);
+            this._kodInput.addEventListener("keydown", e => {
+                if (e.key === "Enter") this._setFilter(this._kodInput.value);
+                if (e.key === "Escape") { this._kodInput.value = this._matFilter; this._kodInput.blur(); }
+            });
+            this._kodInput.addEventListener("change", () => this._setFilter(this._kodInput.value));
+            box.querySelector("button").addEventListener("click", () => this._openPopup());
+            this._kodHeaderEl = el;
+        }
+
+        _initPopup() {
+            const $ = (id) => this._root.getElementById(id);
+            this._pop = $("pop");
+            this._selRowsEl = $("selRows");
+            this._searchEl = $("search");
+            this._hitsEl = $("hits");
+            this._hitInfoEl = $("hitInfo");
+            stopEvents(this._pop);
+            $("popClose").addEventListener("click", () => this._closePopup());
+            $("popCancel").addEventListener("click", () => this._closePopup());
+            $("popClear").addEventListener("click", () => { this._sel = []; this._renderSelRows(); this._renderHits(); });
+            $("popOk").addEventListener("click", () => {
+                this._readSelRows();
+                this._closePopup();
+                this._setFilter(this._sel.filter(s => s.low).map(tokenText).join("; "));
+            });
+            $("addRow").addEventListener("click", () => {
+                this._readSelRows();
+                this._sel.push({ low: "", high: "" });
+                this._renderSelRows();
+                const inputs = this._selRowsEl.querySelectorAll("input");
+                if (inputs.length) inputs[inputs.length - 2].focus();
+            });
+            this._searchEl.addEventListener("input", () => {
+                clearTimeout(this._searchTimer);
+                this._searchTimer = setTimeout(() => this._search(), 300);
+            });
+            this._hitsEl.addEventListener("change", (e) => {
+                const id = e.target.value;
+                this._readSelRows();
+                if (e.target.checked) {
+                    if (!this._sel.some(s => !s.high && s.low === id)) this._sel.push({ low: id, high: "" });
+                } else {
+                    this._sel = this._sel.filter(s => s.high || s.low !== id);
+                }
+                this._renderSelRows();
+            });
+            this._pop.addEventListener("keydown", (e) => { if (e.key === "Escape") this._closePopup(); });
+        }
+
+        _openPopup() {
+            this._kodInput.value = this._matFilter;
+            this._sel = splitList(this._matFilter).map(parseToken);
+            if (!this._sel.length) this._sel.push({ low: "", high: "" });
+            this._renderSelRows();
+            this._searchEl.value = "";
+            this._pop.hidden = false;
+            this._search();
+            this._searchEl.focus();
+        }
+
+        _closePopup() {
+            this._pop.hidden = true;
+            this._searchToken = (this._searchToken || 0) + 1;
+        }
+
+        _readSelRows() {
+            this._sel = Array.from(this._selRowsEl.querySelectorAll(".sel-row")).map(r => {
+                const [lo, hi] = r.querySelectorAll("input");
+                return { low: lo.value.trim(), high: hi.value.trim() };
+            });
+        }
+
+        _renderSelRows() {
+            this._selRowsEl.innerHTML = "";
+            this._sel.forEach((s, i) => {
+                const row = document.createElement("div");
+                row.className = "sel-row";
+                row.innerHTML = `<input type="text" placeholder="alt / 2*"> – <input type="text" placeholder="üst (ops.)"><button title="Sil">×</button>`;
+                const [lo, hi] = row.querySelectorAll("input");
+                lo.value = s.low;
+                hi.value = s.high;
+                row.querySelector("button").addEventListener("click", () => {
+                    this._readSelRows();
+                    this._sel.splice(i, 1);
+                    this._renderSelRows();
+                    this._renderHits();
+                });
+                this._selRowsEl.appendChild(row);
+            });
+        }
+
+        async _search() {
+            const token = this._searchToken = (this._searchToken || 0) + 1;
+            const term = this._searchEl.value.trim();
+            const all = this._allIds;
+            let hits;
+            let more = false;
+            this._hitInfoEl.textContent = "aranıyor…";
+            try {
+                if (!term) {
+                    hits = all.slice(0, MAX_HITS);
+                    more = all.length > MAX_HITS;
+                } else {
+                    const m = /[*?]/.test(term) ? matcher(term) : (id => id.indexOf(term) >= 0);
+                    const codeHits = all.filter(m);
+                    const found = new Set(codeHits.slice(0, MAX_HITS));
+                    if (found.size < MAX_HITS && !/^[\d*?\-]+$/.test(term)) {
+                        const lower = term.toLocaleLowerCase("tr-TR");
+                        const variants = Array.from(new Set([term, term.toLocaleUpperCase("tr-TR"), term.toUpperCase(), lower,
+                            lower.charAt(0).toLocaleUpperCase("tr-TR") + lower.slice(1)]));
+                        const rows = await this._get("ZMALZEMEMaster", {
+                            $select: "ID,Description",
+                            $filter: variants.map(v => `contains(Description,'${q(v)}')`).join(" or "),
+                            $top: 5000
+                        });
+                        if (token !== this._searchToken) return;
+                        rows.forEach(r => {
+                            this._desc.ZMALZEME.set(r.ID, r.Description || "");
+                            if (this._allIndex.has(r.ID) && found.size < MAX_HITS) found.add(r.ID);
+                        });
+                    }
+                    hits = Array.from(found).sort((a, b) => this._allIndex.get(a) - this._allIndex.get(b));
+                    more = codeHits.length > MAX_HITS || hits.length >= MAX_HITS;
+                }
+                await this._loadDescriptions("ZMALZEME", hits);
+                if (token !== this._searchToken) return;
+                this._hits = hits;
+                this._renderHits();
+                this._hitInfoEl.textContent = hits.length
+                    ? `${hits.length} malzeme${more ? ` (ilk ${MAX_HITS} gösteriliyor, aramayı daraltın)` : ""}`
+                    : "Eşleşen malzeme yok.";
+            } catch (e) {
+                if (token === this._searchToken) this._hitInfoEl.textContent = "Arama hatası: " + errText(e);
+            }
+        }
+
+        _renderHits() {
+            if (!this._hits) return;
+            const singles = new Set((this._sel || []).filter(s => !s.high).map(s => s.low));
+            this._hitsEl.innerHTML = "";
+            const frag = document.createDocumentFragment();
+            this._hits.forEach(id => {
+                const label = document.createElement("label");
+                label.innerHTML = `<input type="checkbox"><b></b><span></span>`;
+                const cb = label.querySelector("input");
+                cb.value = id;
+                cb.checked = singles.has(id);
+                label.querySelector("b").textContent = id;
+                label.querySelector("span").textContent = this._desc.ZMALZEME.get(id) || "";
+                frag.appendChild(label);
+            });
+            this._hitsEl.appendChild(frag);
+        }
+
         _buildTable(dates, rows) {
             this._destroyTable();
             const columns = [
-                { title: "Kod", field: "name", width: 190, frozen: true },
+                { title: "Kod", field: "name", width: 190, frozen: true, titleFormatter: () => this._kodHeaderEl },
                 { title: "Açıklama", field: "desc", width: 280, frozen: true, formatter: descFormatter },
                 { title: "Tür", field: "type", width: 80, frozen: true }
             ];
@@ -278,7 +564,7 @@
                 dataTreeStartExpanded: false,
                 dataTreeChildIndent: 22,
                 dataTreeElementColumn: "name",
-                placeholder: "",
+                placeholder: "Filtreye uyan malzeme yok",
                 rowFormatter: (row) => {
                     const k = row.getData()._kind;
                     if (k === "A") row.getElement().classList.add("row-activity");
@@ -299,6 +585,7 @@
                 this._hoverTimer = setTimeout(() => this._prefetch(row), 150);
             });
             this._table.on("rowMouseLeave", () => clearTimeout(this._hoverTimer));
+            this._kodInput.classList.toggle("on", !!this._matFilter);
             this._updateStatus();
         }
 
@@ -325,28 +612,44 @@
             for (let b = Math.max(0, first - 1); b <= last + 1; b++) this._loadBlock(b);
         }
 
+        async _fetchValues(ids) {
+            const idx = this._allIndex;
+            const contiguous = idx.get(ids[ids.length - 1]) - idx.get(ids[0]) === ids.length - 1;
+            const parts = contiguous ? [ids] : chunks(ids, CHUNK);
+            const results = await Promise.all(parts.map(part => this._get("FactDataAggregation", {
+                $select: "ZMALZEME,Date,ZPARAMETRE,ZMIKTAR",
+                $filter: this._baseFilter + (contiguous
+                    ? ` and ZMALZEME ge '${q(part[0])}' and ZMALZEME le '${q(part[part.length - 1])}'`
+                    : ` and ${orEq("ZMALZEME", part)}`)
+            })));
+            return [].concat.apply([], results);
+        }
+
         async _loadBlock(b) {
             const start = b * this._blockSize;
             if (start >= this._ids.length || this._blocks.has(b)) return;
-            this._blocks.set(b, "busy");
+            const blocks = this._blocks;
+            const ids = this._ids.slice(start, start + this._blockSize).filter(id => !this._valCache.has(id));
+            if (!ids.length) {
+                blocks.set(b, "done");
+                return;
+            }
+            blocks.set(b, "busy");
             this._updateStatus();
             const token = this._token;
-            const ids = this._ids.slice(start, start + this._blockSize);
-            const range = ` and ZMALZEME ge '${q(ids[0])}' and ZMALZEME le '${q(ids[ids.length - 1])}'`;
             try {
-                const [vals] = await Promise.all([
-                    this._get("FactDataAggregation", { $select: "ZMALZEME,Date,ZPARAMETRE,ZMIKTAR", $filter: this._baseFilter + range }),
-                    this._loadDescriptions("ZMALZEME", ids)
-                ]);
+                const [vals] = await Promise.all([this._fetchValues(ids), this._loadDescriptions("ZMALZEME", ids)]);
                 if (token !== this._token) return;
                 const updates = new Map(ids.map(id => [id, { key: `M${id}`, desc: this._desc.ZMALZEME.get(id) || "" }]));
                 vals.forEach(r => { if (updates.has(r.ZMALZEME)) addValue(updates.get(r.ZMALZEME), r); });
-                await this._table.updateData(Array.from(updates.values()));
-                this._blocks.set(b, "done");
+                updates.forEach((u, id) => this._valCache.set(id, u));
+                const visible = Array.from(updates.values()).filter(u => this._table.getRow(u.key));
+                if (visible.length) await this._table.updateData(visible);
+                if (blocks === this._blocks) blocks.set(b, "done");
                 this._updateStatus();
             } catch (e) {
                 if (token !== this._token) return;
-                this._blocks.delete(b);
+                blocks.delete(b);
                 this._failed = true;
                 this._setStatus("Yüklenemedi: " + errText(e), true);
             }
