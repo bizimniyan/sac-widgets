@@ -73,6 +73,10 @@
         });
         return tests.length ? id => tests.some(t => t(id)) : null;
     };
+    const normType = (t) => {
+        const c = String(t || "").trim().toLocaleUpperCase("tr-TR").charAt(0);
+        return c === "M" || c === "Y" ? c : "";
+    };
     const stopEvents = (el) => ["mousedown", "mouseup", "click", "dblclick", "keydown", "keyup", "keypress", "contextmenu"]
         .forEach(ev => el.addEventListener(ev, e => e.stopPropagation()));
 
@@ -97,7 +101,8 @@
             @keyframes spin { to { transform: rotate(360deg); } }
             .kod-f { display: flex; gap: 3px; margin-top: 6px; }
             .kod-f input { flex: 1 1 auto; min-width: 0; font: 12px Arial, sans-serif; padding: 2px 4px; border: 1px solid #c4c4c4; border-radius: 3px; }
-            .kod-f input.on { border-color: #0a6ed1; background: #eef5fc; }
+            .kod-f select { flex: 0 0 auto; width: 76px; font: 11px Arial, sans-serif; padding: 1px 0; border: 1px solid #c4c4c4; border-radius: 3px; background: #fff; }
+            .kod-f input.on, .kod-f select.on { border-color: #0a6ed1; background: #eef5fc; }
             .kod-f button, .pop button { font: 12px Arial, sans-serif; cursor: pointer; border: 1px solid #c4c4c4; background: #fff; border-radius: 3px; }
             .kod-f button { flex: 0 0 22px; padding: 0; line-height: 18px; }
             .kod-f button:hover, .pop button:hover { background: #eef5fc; }
@@ -162,6 +167,8 @@
             this._table = null;
             this._token = 0;
             this._matFilter = "";
+            this._matType = "";
+            this._compSet = new Set();
             this._allIds = [];
             this._ids = [];
             this._desc = { ZMALZEME: new Map(), ZBILESEN: new Map(), ZMASRAF_OGESI: new Map() };
@@ -174,12 +181,26 @@
                 this._matFilter = this.materialFilter || "";
                 this._kodInput.value = this._matFilter;
             }
+            if ("materialType" in changedProperties) {
+                this._matType = normType(this.materialType);
+                this._kodType.value = this._matType;
+            }
             if (["providerId", "version", "parameters", "pageSize", "onlyParents", "companyCode"].some(k => k in changedProperties)) {
                 clearTimeout(this._refreshTimer);
                 this._refreshTimer = setTimeout(() => this.refresh(), 0);
-            } else if ("materialFilter" in changedProperties) {
+            } else if ("materialFilter" in changedProperties || "materialType" in changedProperties) {
                 this._applyFilter();
             }
+        }
+
+        setMaterialType(type) {
+            this._matType = normType(type);
+            this._kodType.value = this._matType;
+            this._applyFilter();
+        }
+
+        getMaterialType() {
+            return this._matType;
         }
 
         onCustomWidgetResize() {
@@ -222,14 +243,15 @@
 
             try {
                 await loadScript(TABULATOR_JS);
-                const [dateRows, idRows, parentRows] = await Promise.all([
+                const [dateRows, idRows, parentRows, compRows] = await Promise.all([
                     this._get("FactDataAggregation", { $select: "Date,ZMIKTAR", $filter: this._baseFilter, $orderby: "Date" }),
                     this._get("FactDataAggregation", {
                         $select: "ZMALZEME,ZMIKTAR",
                         $filter: this._baseFilter + (this._onlyParents ? CHILD_FILTER : ""),
                         $orderby: "ZMALZEME"
                     }),
-                    this._onlyParents ? null : this._get("FactDataAggregation", { $select: "ZMALZEME,ZMIKTAR", $filter: this._baseFilter + CHILD_FILTER })
+                    this._onlyParents ? null : this._get("FactDataAggregation", { $select: "ZMALZEME,ZMIKTAR", $filter: this._baseFilter + CHILD_FILTER }),
+                    this._get("FactDataAggregation", { $select: "ZBILESEN,ZMIKTAR", $filter: this._baseFilter + " and ZBILESEN ne '#'" })
                 ]);
                 if (token !== this._token) return;
                 const dates = dateRows.map(r => r.Date).filter(d => d && d !== NONE);
@@ -241,6 +263,7 @@
                 }
                 this._allIndex = new Map(this._allIds.map((id, i) => [id, i]));
                 this._parentSet = new Set(parentRows ? parentRows.map(r => r.ZMALZEME) : this._allIds);
+                this._compSet = new Set(compRows.map(r => r.ZBILESEN));
                 this._ids = this._filteredIds();
                 this._buildTable(dates, this._ids.map((id, pos) => this._mRow(id, pos)));
                 this._loadAllActivityDescriptions();
@@ -251,7 +274,12 @@
 
         _filteredIds() {
             const m = matcher(this._matFilter);
-            return m ? this._allIds.filter(m) : this._allIds.slice();
+            const t = this._matType;
+            const parents = this._parentSet;
+            const comps = this._compSet;
+            if (!m && !t) return this._allIds.slice();
+            return this._allIds.filter(id => (!m || m(id)) &&
+                (!t || (parents.has(id) && (t === "M" ? !comps.has(id) : comps.has(id)))));
         }
 
         _setFilter(text) {
@@ -262,6 +290,7 @@
 
         _applyFilter() {
             this._kodInput.classList.toggle("on", !!this._matFilter);
+            this._kodType.classList.toggle("on", !!this._matType);
             if (!this._table || !this._allIds.length) return;
             this._ids = this._filteredIds();
             this._blocks = new Map();
@@ -372,10 +401,14 @@
 
         _buildKodHeader() {
             const el = document.createElement("div");
-            el.innerHTML = `<div>Kod</div><div class="kod-f"><input type="text" placeholder="2*, 21000001-21000999"><button title="Çoklu seçim">⋯</button></div>`;
+            el.innerHTML = `<div>Kod</div><div class="kod-f"><select title="Mamül: başka malzemede bileşen değil · Yarımamül: hem bileşen hem altı var">` +
+                `<option value="">Tümü</option><option value="M">Mamül</option><option value="Y">Yarımamül</option></select>` +
+                `<input type="text" placeholder="2*, 21000001-21000999"><button title="Çoklu seçim">⋯</button></div>`;
             const box = el.querySelector(".kod-f");
             this._kodInput = box.querySelector("input");
+            this._kodType = box.querySelector("select");
             stopEvents(box);
+            this._kodType.addEventListener("change", () => this.setMaterialType(this._kodType.value));
             this._kodInput.addEventListener("keydown", e => {
                 if (e.key === "Enter") this._setFilter(this._kodInput.value);
                 if (e.key === "Escape") { this._kodInput.value = this._matFilter; this._kodInput.blur(); }
@@ -533,7 +566,7 @@
         _buildTable(dates, rows) {
             this._destroyTable();
             const columns = [
-                { title: "Kod", field: "name", width: 190, frozen: true, titleFormatter: () => this._kodHeaderEl },
+                { title: "Kod", field: "name", width: 260, frozen: true, titleFormatter: () => this._kodHeaderEl },
                 { title: "Açıklama", field: "desc", width: 280, frozen: true, formatter: descFormatter },
                 { title: "Tür", field: "type", width: 80, frozen: true }
             ];
@@ -586,6 +619,7 @@
             });
             this._table.on("rowMouseLeave", () => clearTimeout(this._hoverTimer));
             this._kodInput.classList.toggle("on", !!this._matFilter);
+            this._kodType.classList.toggle("on", !!this._matType);
             this._updateStatus();
         }
 
