@@ -114,7 +114,7 @@
             .tabulator-row, .tabulator-row.tabulator-row-even, .tabulator-row.tabulator-row-odd { background: #fff !important; border-bottom: 0 !important; }
             .tabulator-row .tabulator-cell { border-right: 0 !important; padding: 4px 8px; }
             .tabulator-row .tabulator-cell { background-image: linear-gradient(#ececec, #ececec); background-repeat: no-repeat; background-size: calc(100% - 6px) 1px; background-position: center bottom; }
-            .tabulator-row:hover, .tabulator-row:hover .tabulator-cell.tabulator-frozen { background-color: #f7f9fb !important; }
+            .tabulator-row:hover, .tabulator-row:hover .tabulator-cell.tabulator-frozen { background-color: #fafafa !important; }
             .tabulator-row.tabulator-tree-level-0 { font-weight: 600; color: #262626; }
             .tabulator-row:not(.tabulator-tree-level-0) { font-weight: 400; color: #5f5f5f; }
             .tabulator-row.row-activity { color: #8c8c8c; font-style: italic; }
@@ -123,19 +123,24 @@
             .tabulator-row .tabulator-data-tree-control .tabulator-data-tree-control-expand, .tabulator-row .tabulator-data-tree-control .tabulator-data-tree-control-expand:after,
             .tabulator-row .tabulator-data-tree-control .tabulator-data-tree-control-collapse, .tabulator-row .tabulator-data-tree-control .tabulator-data-tree-control-collapse:after { background: #7a7a7a !important; }
             .tabulator-row .tabulator-data-tree-branch { border-color: #d6d6d6 !important; }
-            .tabulator-row .tabulator-cell.tabulator-range-selected:not(.tabulator-range-only-cell-selected) { background-color: #e4eefa !important; }
-            .tabulator .tabulator-header .tabulator-col.tabulator-range-highlight, .tabulator .tabulator-header .tabulator-col.tabulator-range-selected { background: #f1f6fc !important; color: inherit !important; }
+            .tabulator .tabulator-tableholder .tabulator-range-overlay .tabulator-range,
+            .tabulator .tabulator-tableholder .tabulator-range-overlay .tabulator-range-cell-active { border-color: #ff0000 !important; }
+            .tabulator .tabulator-tableholder .tabulator-range-overlay .tabulator-range.tabulator-range-active::after { background-color: #ff0000 !important; }
+            .pop input[type=checkbox] { accent-color: #ff0000; }
+            .kod-f input:focus, .kod-f select:focus, .pop input[type=text]:focus { outline: 1px solid #ff0000; outline-offset: 0; border-color: #ff0000; }
+            .tabulator-row .tabulator-cell.tabulator-range-selected:not(.tabulator-range-only-cell-selected) { background-color: #ffd9d9 !important; }
+            .tabulator .tabulator-header .tabulator-col.tabulator-range-highlight, .tabulator .tabulator-header .tabulator-col.tabulator-range-selected { background: #ffecec !important; color: inherit !important; }
             .tabulator-row .tabulator-cell.dash { color: #cfcfcf; font-weight: 400; }
             .loading { color: #999; font-style: italic; font-weight: normal; font-size: 12px; }
-            .loading i { display: inline-block; width: 8px; height: 8px; margin-right: 5px; vertical-align: -1px; border: 2px solid #ddd; border-top-color: #0a6ed1; border-radius: 50%; animation: spin .8s linear infinite; }
+            .loading i { display: inline-block; width: 8px; height: 8px; margin-right: 5px; vertical-align: -1px; border: 2px solid #ddd; border-top-color: #ff0000; border-radius: 50%; animation: spin .8s linear infinite; }
             @keyframes spin { to { transform: rotate(360deg); } }
             .kod-f { display: flex; gap: 3px; margin-top: 6px; }
             .kod-f input { flex: 1 1 auto; min-width: 0; font: 11px Arial, sans-serif; padding: 2px 4px; border: 1px solid #dadada; border-radius: 3px; color: #333; }
             .kod-f select { flex: 0 0 auto; width: 76px; font: 11px Arial, sans-serif; padding: 1px 0; border: 1px solid #dadada; border-radius: 3px; background: #fff; color: #333; }
-            .kod-f input.on, .kod-f select.on { border-color: #0a6ed1; background: #eef5fc; }
+            .kod-f input.on, .kod-f select.on { border-color: #ff0000; background: #ffe8e8; }
             .kod-f button, .pop button { font: 11px Arial, sans-serif; cursor: pointer; border: 1px solid #dadada; background: #fff; border-radius: 3px; color: #444; }
             .kod-f button { flex: 0 0 22px; padding: 0; line-height: 18px; }
-            .kod-f button:hover, .pop button:hover { background: #eef5fc; }
+            .kod-f button:hover, .pop button:hover { background: #ffe8e8; }
             .pop { position: absolute; top: 28px; left: 8px; z-index: 20; width: 460px; max-width: calc(100% - 16px); max-height: calc(100% - 36px);
                    display: flex; flex-direction: column; background: #fff; border: 1px solid #bbb; border-radius: 4px; box-shadow: 0 4px 16px rgba(0,0,0,.18); font: 12px Arial, sans-serif; color: #222; }
             .pop[hidden] { display: none; }
@@ -154,17 +159,17 @@
             .pop-b > .hits { margin-top: 4px; border: 1px solid #eee; overflow: auto; flex: 1 1 auto; min-height: 90px; }
             .hits label { display: flex; gap: 6px; align-items: center; padding: 2px 6px; cursor: pointer; white-space: nowrap; }
             .hits label:nth-child(even) { background: #fafafa; }
-            .hits label:hover { background: #eef5fc; }
+            .hits label:hover { background: #ffe8e8; }
             .hits b { flex: 0 0 72px; font-weight: 600; }
             .hits span { overflow: hidden; text-overflow: ellipsis; color: #444; }
             .hit-info { color: #888; margin-top: 3px; min-height: 14px; }
             .pop-f { display: flex; gap: 6px; padding: 6px 10px; border-top: 1px solid #eee; }
             .pop-f .sp { flex: 1; }
             .pop-f button { padding: 3px 12px; }
-            .pop-f .primary { background: #0a6ed1; border-color: #0a6ed1; color: #fff; }
-            .pop-f .primary:hover { background: #085caf; }
+            .pop-f .primary { background: #ff0000; border-color: #ff0000; color: #fff; }
+            .pop-f .primary:hover { background: #ff3333; }
             .kod-f .gbtn { flex: 1 1 auto; min-width: 0; text-align: left; padding: 1px 4px !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: normal; }
-            .kod-f .gbtn.on { border-color: #0a6ed1 !important; background: #eef5fc !important; }
+            .kod-f .gbtn.on { border-color: #ff0000 !important; background: #ffe8e8 !important; }
             .gpop { width: 300px; }
             .gpop .hits b { flex: 1 1 auto; font-weight: normal; overflow: hidden; text-overflow: ellipsis; }
             .gpop .hits span { flex: 0 0 auto; color: #888; }

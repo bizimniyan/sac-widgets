@@ -6,20 +6,20 @@
     "vendor": "Custom",
     "license": "",
     "id": "com.custom.usmtree",
-    "version": "1.5.1",
+    "version": "1.5.2",
     "icon": "",
     "webcomponents": [
         {
             "kind": "main",
             "tag": "custom-usm-tree",
-            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree.js?v=151",
+            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree.js?v=152",
             "integrity": "",
             "ignoreIntegrity": true
         },
         {
             "kind": "builder",
             "tag": "custom-usm-tree-builder",
-            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree_builder.js?v=151",
+            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree_builder.js?v=152",
             "integrity": "",
             "ignoreIntegrity": true
         }
