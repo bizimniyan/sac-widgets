@@ -84,6 +84,8 @@
             const token = ++this._token;
             this._blocks = new Map();
             this._ids = [];
+            this._parentSet = new Set();
+            this._childCache = new Map();
             this._failed = false;
 
             this._pid = (this.providerId || "").trim();
@@ -119,10 +121,11 @@
                     this._setStatus(`${version} versiyonunda bu parametrelerle veri yok.`);
                     return;
                 }
-                const expandable = parentRows ? new Set(parentRows.map(r => r.ZMALZEME)) : null;
+                this._parentSet = new Set(parentRows ? parentRows.map(r => r.ZMALZEME) : this._ids);
                 const rows = this._ids.map((id, pos) =>
-                    Object.assign(this._row(`M${id}`, "M", id, "ZMALZEME", !expandable || expandable.has(id)), { _pos: pos }));
+                    Object.assign(this._row(`M${id}`, "M", id, "ZMALZEME", this._parentSet.has(id)), { _pos: pos }));
                 this._buildTable(dates, rows);
+                this._loadAllActivityDescriptions();
             } catch (e) {
                 this._setStatus("Yüklenemedi: " + errText(e), true);
             }
@@ -175,16 +178,43 @@
             }));
         }
 
-        async _withChildren(ids) {
-            const result = new Set();
-            await Promise.all(chunks(ids, CHUNK).map(async (part) => {
-                const rows = await this._get("FactDataAggregation", {
-                    $select: "ZMALZEME,ZMIKTAR",
-                    $filter: `${this._baseFilter} and ${orEq("ZMALZEME", part)}${CHILD_FILTER}`
+        async _loadAllActivityDescriptions() {
+            try {
+                const rows = await this._get("ZMASRAF_OGESIMaster", { $select: "ID,Description" });
+                rows.forEach(r => this._desc.ZMASRAF_OGESI.set(r.ID, r.Description || ""));
+            } catch (e) {
+                return;
+            }
+        }
+
+        _childData(id) {
+            if (!this._childCache.has(id)) {
+                const p = this._get("FactDataAggregation", {
+                    $select: "Date,ZPARAMETRE,ZBILESEN,ZMASRAF_OGESI,ZMIKTAR",
+                    $filter: `${this._baseFilter} and ZMALZEME eq '${q(id)}'${CHILD_FILTER}`
+                }).then(recs => {
+                    const comps = new Map();
+                    const acts = new Map();
+                    recs.forEach(r => {
+                        let map, cid;
+                        if (r.ZBILESEN && r.ZBILESEN !== NONE) { map = comps; cid = r.ZBILESEN; }
+                        else if (r.ZMASRAF_OGESI && r.ZMASRAF_OGESI !== NONE) { map = acts; cid = r.ZMASRAF_OGESI; }
+                        else return;
+                        if (!map.has(cid)) map.set(cid, {});
+                        addValue(map.get(cid), r);
+                    });
+                    return { comps, acts };
                 });
-                rows.forEach(r => result.add(r.ZMALZEME));
-            }));
-            return result;
+                p.catch(() => this._childCache.delete(id));
+                this._childCache.set(id, p);
+            }
+            return this._childCache.get(id);
+        }
+
+        _prefetch(row) {
+            const d = row.getData();
+            if (d._kind === "P" || d._kind === "A" || d._loaded || !Array.isArray(d._children)) return;
+            this._childData(d._id);
         }
 
         _row(key, type, id, dim, expandable) {
@@ -213,6 +243,7 @@
                 index: "key",
                 data: rows,
                 height: "100%",
+                rowHeight: 26,
                 layout: "fitData",
                 columns: columns,
                 columnDefaults: { headerSort: false },
@@ -236,6 +267,11 @@
                 }, 100);
             });
             this._table.on("dataTreeRowExpanded", (row) => this._expand(row));
+            this._table.on("rowMouseEnter", (e, row) => {
+                clearTimeout(this._hoverTimer);
+                this._hoverTimer = setTimeout(() => this._prefetch(row), 150);
+            });
+            this._table.on("rowMouseLeave", () => clearTimeout(this._hoverTimer));
             this._updateStatus();
         }
 
@@ -281,32 +317,26 @@
             d._busy = true;
             const token = this._token;
             try {
-                const recs = await this._get("FactDataAggregation", {
-                    $select: "Date,ZPARAMETRE,ZBILESEN,ZMASRAF_OGESI,ZMIKTAR",
-                    $filter: `${this._baseFilter} and ZMALZEME eq '${q(d._id)}'${CHILD_FILTER}`
-                });
-                const comps = new Map();
-                const acts = new Map();
-                recs.forEach(r => {
-                    let map, id;
-                    if (r.ZBILESEN && r.ZBILESEN !== NONE) { map = comps; id = r.ZBILESEN; }
-                    else if (r.ZMASRAF_OGESI && r.ZMASRAF_OGESI !== NONE) { map = acts; id = r.ZMASRAF_OGESI; }
-                    else return;
-                    if (!map.has(id)) map.set(id, {});
-                    addValue(map.get(id), r);
-                });
+                const { comps, acts } = await this._childData(d._id);
+                if (token !== this._token) return;
                 const compIds = Array.from(comps.keys()).sort();
                 const actIds = Array.from(acts.keys()).sort();
-                const [expandable] = await Promise.all([
-                    this._withChildren(compIds),
+                const children = [];
+                compIds.forEach(id => children.push(Object.assign(this._row(`${d.key}/B${id}`, "B", id, "ZBILESEN", this._parentSet.has(id)), comps.get(id))));
+                actIds.forEach(id => children.push(Object.assign(this._row(`${d.key}/A${id}`, "A", id, "ZMASRAF_OGESI", false), acts.get(id))));
+                await row.update({ _children: children.length ? children : null, _loaded: true, _busy: false });
+
+                await Promise.all([
                     this._loadDescriptions("ZBILESEN", compIds),
                     this._loadDescriptions("ZMASRAF_OGESI", actIds)
                 ]);
                 if (token !== this._token) return;
-                const children = [];
-                compIds.forEach(id => children.push(Object.assign(this._row(`${d.key}/B${id}`, "B", id, "ZBILESEN", expandable.has(id)), comps.get(id))));
-                actIds.forEach(id => children.push(Object.assign(this._row(`${d.key}/A${id}`, "A", id, "ZMASRAF_OGESI", false), acts.get(id))));
-                await row.update({ _children: children.length ? children : null, _loaded: true, _busy: false });
+                row.getTreeChildren().forEach(c => {
+                    const cd = c.getData();
+                    const dim = cd._kind === "B" ? "ZBILESEN" : cd._kind === "A" ? "ZMASRAF_OGESI" : null;
+                    const desc = dim ? this._desc[dim].get(cd._id) || "" : "";
+                    if (dim && desc !== cd.desc) c.update({ desc });
+                });
             } catch (e) {
                 d._busy = false;
                 if (token !== this._token) return;
