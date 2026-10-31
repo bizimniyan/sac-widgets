@@ -16,6 +16,7 @@
         </style>
         <div class="form">
             ${FIELDS.map(f => `<label for="${f.id}">${f.label}</label><input id="${f.id}" type="text">`).join("")}
+            <label><input id="onlyParents" type="checkbox" style="width:auto"> Sadece bileşeni/aktivitesi olan malzemeler</label>
             <button id="apply">Uygula</button>
         </div>`;
 
@@ -32,7 +33,8 @@
                             providerId: val("providerId"),
                             version: val("version"),
                             parameters: val("parameters"),
-                            pageSize: parseInt(val("pageSize"), 10) || 100
+                            pageSize: parseInt(val("pageSize"), 10) || 100,
+                            onlyParents: this._shadowRoot.getElementById("onlyParents").checked
                         }
                     }
                 }));
@@ -45,6 +47,9 @@
                     this._shadowRoot.getElementById(f.id).value = changedProps[f.id] === undefined ? "" : changedProps[f.id];
                 }
             });
+            if ("onlyParents" in changedProps) {
+                this._shadowRoot.getElementById("onlyParents").checked = changedProps.onlyParents !== false;
+            }
         }
     }
 

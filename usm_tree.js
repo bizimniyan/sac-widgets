@@ -70,7 +70,7 @@
         }
 
         onCustomWidgetAfterUpdate(changedProperties) {
-            if (["providerId", "version", "parameters", "pageSize"].some(k => k in changedProperties)) {
+            if (["providerId", "version", "parameters", "pageSize", "onlyParents"].some(k => k in changedProperties)) {
                 this.refresh();
             }
         }
@@ -92,6 +92,7 @@
             if (version && version.indexOf(".") < 0) version = "public." + version;
             this._params = (this.parameters || "").split(",").map(s => s.trim()).filter(Boolean);
             this._pageSize = this.pageSize > 0 ? this.pageSize : 100;
+            this._onlyParents = this.onlyParents !== false;
 
             if (!this._pid || !version || !this._params.length) {
                 this._setStatus("Builder panelinden model, versiyon ve parametreleri girin.");
@@ -231,7 +232,7 @@
             try {
                 const ids = (await this._get("FactDataAggregation", {
                     $select: "ZMALZEME,ZMIKTAR",
-                    $filter: this._baseFilter,
+                    $filter: this._baseFilter + (this._onlyParents ? CHILD_FILTER : ""),
                     $orderby: "ZMALZEME",
                     $skip: this._skip,
                     $top: this._pageSize
@@ -245,7 +246,9 @@
                     const range = ` and ZMALZEME ge '${q(shown[0])}' and ZMALZEME le '${q(shown[shown.length - 1])}'`;
                     const [vals, parents] = await Promise.all([
                         this._get("FactDataAggregation", { $select: "ZMALZEME,Date,ZPARAMETRE,ZMIKTAR", $filter: this._baseFilter + range }),
-                        this._get("FactDataAggregation", { $select: "ZMALZEME,ZMIKTAR", $filter: this._baseFilter + range + CHILD_FILTER }),
+                        this._onlyParents
+                            ? shown.map(id => ({ ZMALZEME: id }))
+                            : this._get("FactDataAggregation", { $select: "ZMALZEME,ZMIKTAR", $filter: this._baseFilter + range + CHILD_FILTER }),
                         this._loadDescriptions("ZMALZEME", shown)
                     ]);
                     if (token !== this._token) return;
