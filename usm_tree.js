@@ -23,6 +23,10 @@
         return out;
     };
     const splitList = (text) => String(text || "").split(/[;,\n]/).map(s => s.trim()).filter(Boolean);
+    const memberId = (v) => {
+        const m = String(v || "").trim().match(/&\[([^\]]*)\]$/);
+        return m ? m[1] : String(v || "").trim();
+    };
     const fieldOf = (date, param) => `v${date}_${param}`;
     const fmtDate = (d) => /^\d{6}$/.test(d) ? `${d.slice(4)}.${d.slice(0, 4)}` : d;
     const nf = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 3 });
@@ -313,12 +317,12 @@
             this._matValsError = null;
 
             this._pid = (this.providerId || "").trim();
-            let version = (this.version || "").trim();
+            let version = memberId(this.version);
             if (version && version.indexOf(".") < 0) version = "public." + version;
             this._params = splitList(this.parameters);
             this._blockSize = this.pageSize > 0 ? this.pageSize : 200;
             this._onlyParents = this.onlyParents !== false;
-            const companies = splitList(this.companyCode);
+            const companies = splitList(this.companyCode).map(memberId).filter(Boolean);
 
             if (!this._pid || !version || !this._params.length) {
                 this._setStatus("Builder panelinden model, versiyon ve parametreleri girin.");
