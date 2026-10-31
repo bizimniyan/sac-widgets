@@ -37,7 +37,7 @@
         if (el.classList.contains("dash") !== empty) el.classList.toggle("dash", empty);
         if (!empty) return nf.format(v);
         const d = cell.getData();
-        return d._kind === "P" || (d._kind === "M" && d.desc === null) ? "" : "–";
+        return d._kind === "P" || ((d._kind === "M" || d._kind === "T") && d.desc === null) ? "" : "–";
     };
     const addValue = (target, r) => {
         if (r.ZMIKTAR === null || r.ZMIKTAR === undefined) return;
@@ -51,7 +51,7 @@
         const el = document.createElement("span");
         if (d.desc === null || d.desc === undefined) {
             el.className = "loading";
-            el.innerHTML = "<i></i>yükleniyor…";
+            el.innerHTML = d._kind === "T" ? "<i></i>hesaplanıyor…" : "<i></i>yükleniyor…";
         } else {
             el.textContent = d.desc;
         }
@@ -106,6 +106,10 @@
             .tabulator .tabulator-header .tabulator-col .tabulator-col-content { padding: 6px 8px 6px; }
             .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title { white-space: normal !important; line-height: 1.25; }
             .tabulator-row .tabulator-cell.soft { font-weight: 400; color: #6e6e6e; }
+            .tabulator-row.row-total, .tabulator-row.row-total .tabulator-cell, .tabulator-row.row-total:hover .tabulator-cell.tabulator-frozen { background-color: #f6f6f6 !important; }
+            .tabulator-row.row-total { font-weight: 700; color: #1f1f1f; }
+            .tabulator-row.row-total .tabulator-cell { background-image: linear-gradient(#bdbdbd, #bdbdbd); }
+            .tabulator-row.row-total .tabulator-cell.soft { font-weight: 400; color: #8a8a8a; }
             .tabulator-row .tabulator-cell.pstart, .tabulator .tabulator-header .tabulator-col.pgroup { box-shadow: inset 1px 0 0 #c6c6c6; }
             .tabulator .tabulator-header .tabulator-col:not(.tabulator-col-group)::after { content: ""; position: absolute; left: 3px; right: 3px; bottom: 0; border-bottom: 2px solid #595959; pointer-events: none; }
             .tabulator .tabulator-header .tabulator-col.tabulator-col-group > .tabulator-col-content { color: #7a7a7a; font-weight: 400; }
@@ -305,6 +309,8 @@
             this._failed = false;
             this._attrsReady = false;
             this._attrPromise = null;
+            this._matVals = null;
+            this._matValsError = null;
 
             this._pid = (this.providerId || "").trim();
             let version = (this.version || "").trim();
@@ -349,6 +355,7 @@
                 this._compSet = new Set(compRows.map(r => r.ZBILESEN));
                 this._ids = this._filteredIds();
                 this._buildTable(dates, this._ids.map((id, pos) => this._mRow(id, pos)));
+                this._loadMaterialValues(token);
                 this._loadAllActivityDescriptions();
                 this._attrPromise = this._loadParentAttrs(token);
             } catch (e) {
@@ -420,8 +427,53 @@
             if (!this._table || !this._allIds.length) return;
             this._ids = this._filteredIds();
             this._blocks = new Map();
-            this._table.replaceData(this._ids.map((id, pos) => this._mRow(id, pos))).then(() => this._loadVisible());
+            this._table.replaceData([this._totalRow()].concat(this._ids.map((id, pos) => this._mRow(id, pos)))).then(() => this._loadVisible());
             this._updateStatus();
+        }
+
+        _computeTotal() {
+            if (!this._matVals) return null;
+            const sums = { desc: `${nf.format(this._ids.length)} malzeme` };
+            this._valueFields.forEach(f => { sums[f] = null; });
+            this._ids.forEach(id => {
+                const v = this._matVals.get(id);
+                if (!v) return;
+                for (const f in v) sums[f] = (sums[f] || 0) + v[f];
+            });
+            return sums;
+        }
+
+        _totalRow() {
+            const row = { key: "TOTAL", name: "Toplam", type: "", g1: "", g2: "", desc: this._matValsError || null, _kind: "T" };
+            this._valueFields.forEach(f => { row[f] = null; });
+            return Object.assign(row, this._computeTotal() || {});
+        }
+
+        async _loadMaterialValues(token) {
+            const vals = new Map();
+            try {
+                const rows = await this._get("FactDataAggregation", { $select: "ZMALZEME,Date,ZPARAMETRE,ZMIKTAR", $filter: this._baseFilter });
+                if (token !== this._token) return;
+                rows.forEach(r => {
+                    if (!this._allIndex.has(r.ZMALZEME)) return;
+                    if (!vals.has(r.ZMALZEME)) vals.set(r.ZMALZEME, {});
+                    addValue(vals.get(r.ZMALZEME), r);
+                });
+            } catch (e) {
+                if (token !== this._token) return;
+                this._matValsError = "toplam alınamadı";
+                this._refreshTotalRow();
+                return;
+            }
+            this._matVals = vals;
+            this._refreshTotalRow();
+        }
+
+        async _refreshTotalRow() {
+            const row = this._table && this._table.getRow("TOTAL");
+            if (!row) return;
+            await this._table.updateData([this._totalRow()]);
+            row.reformat();
         }
 
         _setStatus(text, isError) {
@@ -802,7 +854,8 @@
 
             this._table = new window.Tabulator(this._tableEl, {
                 index: "key",
-                data: rows,
+                data: [this._totalRow()].concat(rows),
+                frozenRows: 1,
                 height: "100%",
                 rowHeight: 26,
                 layout: "fitData",
@@ -823,6 +876,7 @@
                     const k = row.getData()._kind;
                     if (k === "A") row.getElement().classList.add("row-activity");
                     if (k === "P") row.getElement().classList.add("row-placeholder");
+                    if (k === "T") row.getElement().classList.add("row-total");
                 }
             });
             this._table.on("tableBuilt", () => this._loadVisible());
@@ -893,11 +947,13 @@
             this._updateStatus();
             const token = this._token;
             try {
-                const [vals] = await Promise.all([this._fetchValues(ids), this._loadDescriptions("ZMALZEME", ids)]);
+                const bulk = this._matVals;
+                const [vals] = await Promise.all([bulk ? null : this._fetchValues(ids), this._loadDescriptions("ZMALZEME", ids)]);
                 if (token !== this._token) return;
                 const empty = Object.fromEntries(this._valueFields.map(f => [f, null]));
                 const updates = new Map(ids.map(id => [id, Object.assign({ key: `M${id}`, desc: this._desc.ZMALZEME.get(id) || "" }, empty, this._attrOf("ZMALZEME", id))]));
-                vals.forEach(r => { if (updates.has(r.ZMALZEME)) addValue(updates.get(r.ZMALZEME), r); });
+                if (vals) vals.forEach(r => { if (updates.has(r.ZMALZEME)) addValue(updates.get(r.ZMALZEME), r); });
+                else updates.forEach((u, id) => Object.assign(u, bulk.get(id) || {}));
                 updates.forEach((u, id) => this._valCache.set(id, u));
                 const visible = Array.from(updates.values()).filter(u => this._table.getRow(u.key));
                 if (visible.length) await this._table.updateData(visible);
