@@ -77,6 +77,12 @@
         const c = String(t || "").trim().toLocaleUpperCase("tr-TR").charAt(0);
         return c === "M" || c === "Y" ? c : "";
     };
+    const runPool = async (tasks, n) => {
+        let i = 0;
+        const worker = async () => { while (i < tasks.length) await tasks[i++](); };
+        await Promise.all(Array.from({ length: Math.min(n, tasks.length) }, worker));
+    };
+    const groupLabel = (v) => v ? v : "(boş)";
     const stopEvents = (el) => ["mousedown", "mouseup", "click", "dblclick", "keydown", "keyup", "keypress", "contextmenu"]
         .forEach(ev => el.addEventListener(ev, e => e.stopPropagation()));
 
@@ -133,6 +139,11 @@
             .pop-f button { padding: 3px 12px; }
             .pop-f .primary { background: #0a6ed1; border-color: #0a6ed1; color: #fff; }
             .pop-f .primary:hover { background: #085caf; }
+            .kod-f .gbtn { flex: 1 1 auto; min-width: 0; text-align: left; padding: 1px 4px !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: normal; }
+            .kod-f .gbtn.on { border-color: #0a6ed1 !important; background: #eef5fc !important; }
+            .gpop { width: 300px; }
+            .gpop .hits b { flex: 1 1 auto; font-weight: normal; overflow: hidden; text-overflow: ellipsis; }
+            .gpop .hits span { flex: 0 0 auto; color: #888; }
         </style>
         <div class="wrap">
             <div id="status">Yükleniyor…</div>
@@ -151,6 +162,18 @@
                 <div class="pop-f">
                     <button id="popClear">Temizle</button><span class="sp"></span>
                     <button id="popCancel">İptal</button><button id="popOk" class="primary">Uygula</button>
+                </div>
+            </div>
+            <div id="gpop" class="pop gpop" hidden>
+                <div class="pop-h"><span id="gTitle"></span><button class="x" id="gClose" title="Kapat">×</button></div>
+                <div class="pop-b">
+                    <input id="gSearch" type="text" placeholder="ara">
+                    <div id="gList" class="hits"></div>
+                    <div id="gInfo" class="hit-info"></div>
+                </div>
+                <div class="pop-f">
+                    <button id="gAll">Tümü</button><button id="gNone">Hiçbiri</button><span class="sp"></span>
+                    <button id="gCancel">İptal</button><button id="gOk" class="primary">Uygula</button>
                 </div>
             </div>
         </div>
@@ -172,8 +195,34 @@
             this._allIds = [];
             this._ids = [];
             this._desc = { ZMALZEME: new Map(), ZBILESEN: new Map(), ZMASRAF_OGESI: new Map() };
+            this._attr = { ZMALZEME: new Map(), ZBILESEN: new Map() };
+            this._grp = { 1: null, 2: null };
+            this._gHeader = {};
             this._buildKodHeader();
+            this._buildGroupHeader(1, "Grup 1");
+            this._buildGroupHeader(2, "Grup 2");
             this._initPopup();
+            this._initGroupPopup();
+        }
+
+        setGroup1Filter(values) {
+            this._setGroup(1, values);
+        }
+
+        setGroup2Filter(values) {
+            this._setGroup(2, values);
+        }
+
+        _setGroup(level, values) {
+            const list = values instanceof Set ? Array.from(values)
+                : typeof values === "string" ? (values.trim() ? values.split(";").map(s => s.trim()) : null)
+                : Array.isArray(values) ? values : null;
+            this._grp[level] = list && list.length ? new Set(list.map(v => v === "(boş)" ? "" : v)) : null;
+            const g = this._grp[level];
+            const btn = this._gHeader[level].btn;
+            btn.textContent = !g ? "Tümü ▾" : g.size === 1 ? groupLabel(Array.from(g)[0]) + " ▾" : `${g.size} seçili ▾`;
+            btn.classList.toggle("on", !!g);
+            this._applyFilter();
         }
 
         onCustomWidgetAfterUpdate(changedProperties) {
@@ -224,6 +273,8 @@
             this._parentSet = new Set();
             this._childCache = new Map();
             this._failed = false;
+            this._attrsReady = false;
+            this._attrPromise = null;
 
             this._pid = (this.providerId || "").trim();
             let version = (this.version || "").trim();
@@ -267,6 +318,7 @@
                 this._ids = this._filteredIds();
                 this._buildTable(dates, this._ids.map((id, pos) => this._mRow(id, pos)));
                 this._loadAllActivityDescriptions();
+                this._attrPromise = this._loadParentAttrs(token);
             } catch (e) {
                 this._setStatus("Yüklenemedi: " + errText(e), true);
             }
@@ -277,9 +329,51 @@
             const t = this._matType;
             const parents = this._parentSet;
             const comps = this._compSet;
-            if (!m && !t) return this._allIds.slice();
+            const g1 = this._attrsReady ? this._grp[1] : null;
+            const g2 = this._attrsReady ? this._grp[2] : null;
+            const attr = this._attr.ZMALZEME;
+            if (!m && !t && !g1 && !g2) return this._allIds.slice();
             return this._allIds.filter(id => (!m || m(id)) &&
-                (!t || (parents.has(id) && (t === "M" ? !comps.has(id) : comps.has(id)))));
+                (!t || (parents.has(id) && (t === "M" ? !comps.has(id) : comps.has(id)))) &&
+                (!g1 || g1.has((attr.get(id) || {}).g1 || "")) &&
+                (!g2 || g2.has((attr.get(id) || {}).g2 || "")));
+        }
+
+        async _loadParentAttrs(token) {
+            const segs = [];
+            let cur = [];
+            this._allIds.forEach(id => {
+                const prev = cur[cur.length - 1];
+                const far = prev !== undefined && (!/^\d+$/.test(id) || !/^\d+$/.test(prev) || id.length !== prev.length || Number(id) - Number(prev) > 500);
+                if (cur.length && (far || cur.length >= 300)) { segs.push(cur); cur = []; }
+                cur.push(id);
+            });
+            if (cur.length) segs.push(cur);
+            try {
+                await runPool(segs.map(seg => async () => {
+                    if (token !== this._token) return;
+                    const rows = await this._get("ZMALZEMEMaster", {
+                        $select: "ID,Description,MALZ_GRUP1,MALZ_GRUP2",
+                        $filter: seg.length === 1 ? `ID eq '${q(seg[0])}'` : `ID ge '${q(seg[0])}' and ID le '${q(seg[seg.length - 1])}'`
+                    });
+                    rows.forEach(r => { if (this._allIndex.has(r.ID)) this._storeMaster("ZMALZEME", r); });
+                }), 6);
+            } catch (e) {
+                return;
+            }
+            if (token !== this._token) return;
+            this._attrsReady = true;
+            if (this._grp[1] || this._grp[2]) this._applyFilter();
+        }
+
+        _storeMaster(dim, r) {
+            this._desc[dim].set(r.ID, r.Description || "");
+            if (this._attr[dim]) this._attr[dim].set(r.ID, { g1: r.MALZ_GRUP1 || "", g2: r.MALZ_GRUP2 || "" });
+        }
+
+        _attrOf(dim, id) {
+            const a = this._attr[dim] && this._attr[dim].get(id);
+            return a ? { g1: a.g1, g2: a.g2 } : { g1: null, g2: null };
         }
 
         _setFilter(text) {
@@ -341,10 +435,11 @@
         async _loadDescriptions(dim, ids) {
             const cache = this._desc[dim];
             const missing = ids.filter(id => !cache.has(id));
+            const select = this._attr[dim] ? "ID,Description,MALZ_GRUP1,MALZ_GRUP2" : "ID,Description";
             await Promise.all(chunks(missing, CHUNK).map(async (part) => {
-                const rows = await this._get(`${dim}Master`, { $select: "ID,Description", $filter: orEq("ID", part) });
-                part.forEach(id => cache.set(id, ""));
-                rows.forEach(r => cache.set(r.ID, r.Description || ""));
+                const rows = await this._get(`${dim}Master`, { $select: select, $filter: orEq("ID", part) });
+                part.forEach(id => this._storeMaster(dim, { ID: id }));
+                rows.forEach(r => this._storeMaster(dim, r));
             }));
         }
 
@@ -390,7 +485,7 @@
         _row(key, type, id, dim, expandable) {
             const cache = this._desc[dim];
             const desc = type === "M" || !cache.has(id) ? null : cache.get(id);
-            const row = { key, type: TYPE_LABEL[type], name: id, desc, _id: id, _kind: type };
+            const row = Object.assign({ key, type: TYPE_LABEL[type], name: id, desc, _id: id, _kind: type }, this._attrOf(dim, id));
             if (expandable) row._children = [{ key: key + "/…", name: "Yükleniyor…", _kind: "P" }];
             return row;
         }
@@ -416,6 +511,91 @@
             this._kodInput.addEventListener("change", () => this._setFilter(this._kodInput.value));
             box.querySelector("button").addEventListener("click", () => this._openPopup());
             this._kodHeaderEl = el;
+        }
+
+        _buildGroupHeader(level, title) {
+            const el = document.createElement("div");
+            el.innerHTML = `<div></div><div class="kod-f"><button class="gbtn">Tümü ▾</button></div>`;
+            el.firstChild.textContent = title;
+            const box = el.querySelector(".kod-f");
+            const btn = box.querySelector("button");
+            stopEvents(box);
+            btn.addEventListener("click", () => this._openGroupPopup(level, btn));
+            this._gHeader[level] = { el, btn, title };
+        }
+
+        _initGroupPopup() {
+            const $ = (id) => this._root.getElementById(id);
+            this._gpop = $("gpop");
+            this._gListEl = $("gList");
+            this._gSearchEl = $("gSearch");
+            this._gInfoEl = $("gInfo");
+            stopEvents(this._gpop);
+            const close = () => { this._gpop.hidden = true; };
+            $("gClose").addEventListener("click", close);
+            $("gCancel").addEventListener("click", close);
+            $("gAll").addEventListener("click", () => { this._gValues.forEach(v => this._gEdit.add(v[0])); this._renderGroupList(); });
+            $("gNone").addEventListener("click", () => { this._gEdit.clear(); this._renderGroupList(); });
+            $("gOk").addEventListener("click", () => {
+                close();
+                const all = this._gEdit.size === this._gValues.length;
+                this._setGroup(this._gLevel, all ? null : Array.from(this._gEdit));
+            });
+            this._gSearchEl.addEventListener("input", () => this._renderGroupList());
+            this._gListEl.addEventListener("change", (e) => {
+                if (e.target.checked) this._gEdit.add(e.target.value);
+                else this._gEdit.delete(e.target.value);
+                this._gInfoEl.textContent = `${this._gValues.length} değer · ${this._gEdit.size} seçili`;
+            });
+            this._gpop.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+        }
+
+        async _openGroupPopup(level, btn) {
+            this._pop.hidden = true;
+            this._gLevel = level;
+            this._root.getElementById("gTitle").textContent = this._gHeader[level].title + " seçimi";
+            const wrap = this._root.querySelector(".wrap").getBoundingClientRect();
+            const r = btn.getBoundingClientRect();
+            this._gpop.style.left = Math.max(8, Math.min(r.left - wrap.left, wrap.width - 308)) + "px";
+            this._gSearchEl.value = "";
+            this._gListEl.innerHTML = "";
+            this._gValues = [];
+            this._gpop.hidden = false;
+            if (!this._attrsReady) {
+                this._gInfoEl.textContent = "grup bilgileri yükleniyor…";
+                if (this._attrPromise) await this._attrPromise;
+                if (!this._attrsReady || this._gpop.hidden || this._gLevel !== level) return;
+            }
+            const key = level === 1 ? "g1" : "g2";
+            const counts = new Map();
+            this._allIds.forEach(id => {
+                const v = (this._attr.ZMALZEME.get(id) || {})[key] || "";
+                counts.set(v, (counts.get(v) || 0) + 1);
+            });
+            this._gValues = Array.from(counts.entries()).sort((a, b) => a[0] === "" ? -1 : b[0] === "" ? 1 : a[0].localeCompare(b[0], "tr"));
+            const cur = this._grp[level];
+            this._gEdit = new Set(cur ? Array.from(cur) : this._gValues.map(v => v[0]));
+            this._renderGroupList();
+            this._gSearchEl.focus();
+        }
+
+        _renderGroupList() {
+            const term = this._gSearchEl.value.trim().toLocaleLowerCase("tr-TR");
+            const shown = this._gValues.filter(v => !term || groupLabel(v[0]).toLocaleLowerCase("tr-TR").indexOf(term) >= 0);
+            this._gListEl.innerHTML = "";
+            const frag = document.createDocumentFragment();
+            shown.forEach(([v, n]) => {
+                const label = document.createElement("label");
+                label.innerHTML = `<input type="checkbox"><b></b><span></span>`;
+                const cb = label.querySelector("input");
+                cb.value = v;
+                cb.checked = this._gEdit.has(v);
+                label.querySelector("b").textContent = groupLabel(v);
+                label.querySelector("span").textContent = nf.format(n);
+                frag.appendChild(label);
+            });
+            this._gListEl.appendChild(frag);
+            this._gInfoEl.textContent = `${this._gValues.length} değer · ${this._gEdit.size} seçili`;
         }
 
         _initPopup() {
@@ -459,6 +639,7 @@
         }
 
         _openPopup() {
+            this._gpop.hidden = true;
             this._kodInput.value = this._matFilter;
             this._sel = splitList(this._matFilter).map(parseToken);
             if (!this._sel.length) this._sel.push({ low: "", high: "" });
@@ -567,8 +748,10 @@
             this._destroyTable();
             const columns = [
                 { title: "Kod", field: "name", width: 260, frozen: true, titleFormatter: () => this._kodHeaderEl },
-                { title: "Açıklama", field: "desc", width: 280, frozen: true, formatter: descFormatter },
-                { title: "Tür", field: "type", width: 80, frozen: true }
+                { title: "Açıklama", field: "desc", width: 260, frozen: true, formatter: descFormatter },
+                { title: "Grup 1", field: "g1", width: 120, titleFormatter: () => this._gHeader[1].el },
+                { title: "Grup 2", field: "g2", width: 170, titleFormatter: () => this._gHeader[2].el },
+                { title: "Tür", field: "type", width: 75 }
             ];
             dates.forEach(d => {
                 columns.push({
@@ -674,7 +857,7 @@
             try {
                 const [vals] = await Promise.all([this._fetchValues(ids), this._loadDescriptions("ZMALZEME", ids)]);
                 if (token !== this._token) return;
-                const updates = new Map(ids.map(id => [id, { key: `M${id}`, desc: this._desc.ZMALZEME.get(id) || "" }]));
+                const updates = new Map(ids.map(id => [id, Object.assign({ key: `M${id}`, desc: this._desc.ZMALZEME.get(id) || "" }, this._attrOf("ZMALZEME", id))]));
                 vals.forEach(r => { if (updates.has(r.ZMALZEME)) addValue(updates.get(r.ZMALZEME), r); });
                 updates.forEach((u, id) => this._valCache.set(id, u));
                 const visible = Array.from(updates.values()).filter(u => this._table.getRow(u.key));
@@ -713,7 +896,12 @@
                     const cd = c.getData();
                     const dim = cd._kind === "B" ? "ZBILESEN" : cd._kind === "A" ? "ZMASRAF_OGESI" : null;
                     const desc = dim ? this._desc[dim].get(cd._id) || "" : "";
-                    if (dim && desc !== cd.desc) c.update({ desc });
+                    if (dim === "ZBILESEN") {
+                        const a = this._attrOf(dim, cd._id);
+                        if (desc !== cd.desc || a.g1 !== cd.g1 || a.g2 !== cd.g2) c.update({ desc, g1: a.g1, g2: a.g2 });
+                    } else if (dim && desc !== cd.desc) {
+                        c.update({ desc });
+                    }
                 });
             } catch (e) {
                 d._busy = false;

@@ -6,20 +6,20 @@
     "vendor": "Custom",
     "license": "",
     "id": "com.custom.usmtree",
-    "version": "1.3.0",
+    "version": "1.4.0",
     "icon": "",
     "webcomponents": [
         {
             "kind": "main",
             "tag": "custom-usm-tree",
-            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree.js?v=130",
+            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree.js?v=140",
             "integrity": "",
             "ignoreIntegrity": true
         },
         {
             "kind": "builder",
             "tag": "custom-usm-tree-builder",
-            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree_builder.js?v=130",
+            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree_builder.js?v=140",
             "integrity": "",
             "ignoreIntegrity": true
         }
@@ -118,6 +118,26 @@
             "description": "Gecerli malzeme tipi filtresini dondurur (M, Y veya bos)",
             "parameters": [],
             "returnType": "string"
+        },
+        "setGroup1Filter": {
+            "description": "MALZ_GRUP1 filtresi: degerler ; ile, (boş) bos deger, bos metin = tumu",
+            "parameters": [
+                {
+                    "name": "values",
+                    "type": "string",
+                    "description": "orn. DİĞER;ENDÜSTRİYEL"
+                }
+            ]
+        },
+        "setGroup2Filter": {
+            "description": "MALZ_GRUP2 filtresi: degerler ; ile, (boş) bos deger, bos metin = tumu",
+            "parameters": [
+                {
+                    "name": "values",
+                    "type": "string",
+                    "description": "orn. DİĞER;ENDÜSTRİYEL"
+                }
+            ]
         },
         "refresh": {
             "description": "Veriyi yeniden yukler",
