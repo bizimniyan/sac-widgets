@@ -6,6 +6,8 @@
     const CHUNK = 40;
     const MAX_HITS = 200;
     const TYPE_LABEL = { M: "Malzeme", B: "Bileşen", A: "Aktivite" };
+    const USE_PARAM = "USM0013";
+    const PROD_PARAM = "USM0015";
     const EXPORT_ROWS = 200000;
     const XLSX_MAX_ROWS = 1048575;
     const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -462,6 +464,27 @@
             return { compIds: compIds.filter(id => m(id) || u.has(id)), actIds: [] };
         }
 
+        _scaleOf(used, id) {
+            const own = (this._matVals && this._matVals.get(id)) || {};
+            const f = {};
+            this._dates.forEach(d => {
+                const u = used[fieldOf(d, USE_PARAM)];
+                const p = own[fieldOf(d, PROD_PARAM)];
+                f[d] = !u ? 0 : p ? u / p : 1;
+            });
+            return f;
+        }
+
+        _scaled(vals, scale) {
+            if (!scale || !vals) return vals;
+            const out = {};
+            for (const k in vals) {
+                const x = vals[k] * scale[k.slice(1, k.indexOf("_"))];
+                if (x) out[k] = x;
+            }
+            return out;
+        }
+
         _isFree(free, id) {
             return !!(free || (this._compMatch && this._compMatch(id)));
         }
@@ -628,23 +651,24 @@
                 this._valueFields.forEach(f => cells.push(vals && vals[f] !== undefined ? Math.round(vals[f] * 1e6) / 1e6 : null));
                 return cells;
             };
-            const walk = function* (pid, top, lvl, path, free) {
+            const walk = function* (pid, top, lvl, path, free, scale) {
                 const c = tree.get(pid);
                 if (!c) return;
                 const v = this._childIds(c, free);
                 for (const id of v.compIds) {
-                    yield line(lvl, top, pid, id, "B", c.comps.get(id));
+                    const vals = this._scaled(c.comps.get(id), scale);
+                    yield line(lvl, top, pid, id, "B", vals);
                     if (tree.has(id) && !path.has(id)) {
                         path.add(id);
-                        yield* walk.call(this, id, top, lvl + 1, path, this._isFree(free, id));
+                        yield* walk.call(this, id, top, lvl + 1, path, this._isFree(free, id), this._scaleOf(vals, id));
                         path.delete(id);
                     }
                 }
-                for (const id of v.actIds) yield line(lvl, top, pid, id, "A", c.acts.get(id));
+                for (const id of v.actIds) yield line(lvl, top, pid, id, "A", this._scaled(c.acts.get(id), scale));
             };
             for (const id of ids) {
                 yield line(1, id, "", id, "M", this._matVals.get(id));
-                yield* walk.call(this, id, id, 2, new Set([id]), false);
+                yield* walk.call(this, id, id, 2, new Set([id]), false, null);
             }
         }
 
@@ -1235,6 +1259,7 @@
         }
 
         _buildTable(dates, rows) {
+            this._dates = dates;
             this._destroyTable();
             const columns = [
                 { title: "Kod", field: "name", width: 260, frozen: true, titleFormatter: () => this._kodHeaderEl },
@@ -1384,11 +1409,13 @@
             const token = this._token;
             try {
                 const { comps, acts } = await this._childData(d._id);
+                if (d._kind === "B" && !this._matVals) await this._matValsPromise;
                 if (token !== this._token) return;
+                const scale = d._kind === "B" ? this._scaleOf(d, d._id) : null;
                 const { compIds, actIds } = this._childIds({ comps, acts }, d._free);
                 const children = [];
-                compIds.forEach(id => children.push(Object.assign(this._row(`${d.key}/B${id}`, "B", id, "ZBILESEN", this._parentSet.has(id)), comps.get(id), { _free: this._isFree(d._free, id) })));
-                actIds.forEach(id => children.push(Object.assign(this._row(`${d.key}/A${id}`, "A", id, "ZMASRAF_OGESI", false), acts.get(id))));
+                compIds.forEach(id => children.push(Object.assign(this._row(`${d.key}/B${id}`, "B", id, "ZBILESEN", this._parentSet.has(id)), this._scaled(comps.get(id), scale), { _free: this._isFree(d._free, id) })));
+                actIds.forEach(id => children.push(Object.assign(this._row(`${d.key}/A${id}`, "A", id, "ZMASRAF_OGESI", false), this._scaled(acts.get(id), scale))));
                 await row.update({ _children: children.length ? children : null, _loaded: true, _busy: false });
 
                 await Promise.all([
