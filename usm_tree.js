@@ -6,7 +6,7 @@
     const CHUNK = 40;
     const MAX_HITS = 200;
     const TYPE_LABEL = { M: "Malzeme", B: "Bileşen", A: "Aktivite" };
-    const EXPORT_ROWS = 100000;
+    const EXPORT_ROWS = 200000;
     const XLSX_MAX_ROWS = 1048575;
     const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
     const XLSX_HEAD = ["Seviye", "Ana Malzeme", "Üst Kod", "Kod", "Açıklama", "Grup 1", "Grup 2", "Tür"];
