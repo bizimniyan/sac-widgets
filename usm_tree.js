@@ -392,14 +392,16 @@
             }
             if (["providerId", "version", "parameters", "pageSize", "onlyParents", "companyCode", "materialType"].some(k => k in changedProperties)) {
                 this._scheduleReload();
-            } else if ("materialFilter" in changedProperties || "componentFilter" in changedProperties) {
+            } else if ("componentFilter" in changedProperties) {
+                this._refreshUsed();
+            } else if ("materialFilter" in changedProperties) {
                 this._applyFilter();
             }
         }
 
         _scheduleReload() {
             clearTimeout(this._refreshTimer);
-            this._refreshTimer = setTimeout(() => { if (!this._reload(false)) this._applyFilter(); }, 150);
+            this._refreshTimer = setTimeout(() => { if (!this._reload(false)) this._refreshUsed(); }, 150);
         }
 
         setMaterialType(type) {
@@ -448,14 +450,60 @@
             btn.textContent = "Bileşen: " + (!n ? "Tümü" : n === 1 ? this._compFilter : `${n} seçim`) + " ▾";
             btn.title = this._compFilter;
             btn.classList.toggle("on", n > 0);
-            if (!silent) this._applyFilter();
+            if (!silent) this._refreshUsed();
         }
 
-        _visibleChildren(c) {
+        _childIds(c, free) {
             const m = this._compMatch;
+            const u = this._usedSet;
             const compIds = c.compIds || Array.from(c.comps.keys()).sort();
             const actIds = c.actIds || Array.from(c.acts.keys()).sort();
-            return m ? { compIds: compIds.filter(m), actIds: [] } : { compIds, actIds };
+            if (!m || !u || free) return { compIds, actIds };
+            return { compIds: compIds.filter(id => m(id) || u.has(id)), actIds: [] };
+        }
+
+        _isFree(free, id) {
+            return !!(free || (this._compMatch && this._compMatch(id)));
+        }
+
+        _parentsOf() {
+            if (!this._parentsPromise) {
+                this._parentsPromise = this._get("FactDataAggregation", { $select: "ZMALZEME,ZBILESEN,ZMIKTAR", $filter: this._baseFilter + " and ZBILESEN ne '#'" })
+                    .then(rows => {
+                        const up = new Map();
+                        rows.forEach(r => {
+                            if (!up.has(r.ZBILESEN)) up.set(r.ZBILESEN, []);
+                            up.get(r.ZBILESEN).push(r.ZMALZEME);
+                        });
+                        return up;
+                    });
+                this._parentsPromise.catch(() => { this._parentsPromise = null; });
+            }
+            return this._parentsPromise;
+        }
+
+        async _refreshUsed() {
+            const token = this._token;
+            const m = this._compMatch;
+            this._usedSet = null;
+            this._applyFilter();
+            if (!m || !this._table) return;
+            this._setStatus("Bileşeni kullanan malzemeler bulunuyor…");
+            try {
+                const up = await this._parentsOf();
+                if (token !== this._token || m !== this._compMatch) return;
+                const used = new Set();
+                const stack = this._compIds.filter(m);
+                while (stack.length) {
+                    (up.get(stack.pop()) || []).forEach(p => {
+                        if (!used.has(p)) { used.add(p); stack.push(p); }
+                    });
+                }
+                this._usedSet = used;
+                this._applyFilter();
+            } catch (e) {
+                if (token === this._token && !(e && e.name === "AbortError")) this._setStatus("Bileşen kullanımı alınamadı: " + errText(e), true);
+            }
         }
 
         refresh() {
@@ -557,18 +605,19 @@
 
         _exportCount(ids, tree) {
             const memo = new Map();
-            const sub = (id, path) => {
-                if (memo.has(id)) return memo.get(id);
-                const c = tree.has(id) ? this._visibleChildren(tree.get(id)) : null;
+            const sub = (id, path, free) => {
+                const key = (free ? "1" : "0") + id;
+                if (memo.has(key)) return memo.get(key);
+                const c = tree.has(id) ? this._childIds(tree.get(id), free) : null;
                 let n = c ? c.actIds.length : 0;
                 if (c) c.compIds.forEach(k => {
                     n++;
-                    if (tree.has(k) && !path.has(k)) { path.add(k); n += sub(k, path); path.delete(k); }
+                    if (tree.has(k) && !path.has(k)) { path.add(k); n += sub(k, path, this._isFree(free, k)); path.delete(k); }
                 });
-                memo.set(id, n);
+                memo.set(key, n);
                 return n;
             };
-            return ids.reduce((s, id) => s + 1 + sub(id, new Set([id])), 0);
+            return ids.reduce((s, id) => s + 1 + sub(id, new Set([id]), false), 0);
         }
 
         *_exportRows(ids, tree) {
@@ -579,15 +628,15 @@
                 this._valueFields.forEach(f => cells.push(vals && vals[f] !== undefined ? Math.round(vals[f] * 1e6) / 1e6 : null));
                 return cells;
             };
-            const walk = function* (pid, top, lvl, path) {
+            const walk = function* (pid, top, lvl, path, free) {
                 const c = tree.get(pid);
                 if (!c) return;
-                const v = this._visibleChildren(c);
+                const v = this._childIds(c, free);
                 for (const id of v.compIds) {
                     yield line(lvl, top, pid, id, "B", c.comps.get(id));
                     if (tree.has(id) && !path.has(id)) {
                         path.add(id);
-                        yield* walk.call(this, id, top, lvl + 1, path);
+                        yield* walk.call(this, id, top, lvl + 1, path, this._isFree(free, id));
                         path.delete(id);
                     }
                 }
@@ -595,7 +644,7 @@
             };
             for (const id of ids) {
                 yield line(1, id, "", id, "M", this._matVals.get(id));
-                yield* walk.call(this, id, id, 2, new Set([id]));
+                yield* walk.call(this, id, id, 2, new Set([id]), false);
             }
         }
 
@@ -630,6 +679,8 @@
             this._attrPromise = null;
             this._matVals = null;
             this._matValsError = null;
+            this._usedSet = null;
+            this._parentsPromise = null;
 
             this._pid = (this.providerId || "").trim();
             this._params = splitList(this.parameters);
@@ -676,6 +727,7 @@
                 this._matValsPromise = this._loadMaterialValues(token);
                 this._actPromise = this._loadAllActivityDescriptions();
                 this._attrPromise = this._loadParentAttrs(token);
+                if (this._compMatch) this._refreshUsed();
             } catch (e) {
                 if (token !== this._token) return;
                 this._loadSig = null;
@@ -692,8 +744,9 @@
             const g1 = this._attrsReady ? this._grp[1] : null;
             const g2 = this._attrsReady ? this._grp[2] : null;
             const attr = this._attr.ZMALZEME;
-            if (!m && !t && !g1 && !g2) return this._allIds.slice();
-            return this._allIds.filter(id => (!m || m(id)) &&
+            const u = this._compMatch ? this._usedSet || new Set() : null;
+            if (!m && !t && !g1 && !g2 && !u) return this._allIds.slice();
+            return this._allIds.filter(id => (!m || m(id)) && (!u || u.has(id)) &&
                 (!t || ty.has(parents.has(id) ? (comps.has(id) ? "Y" : "M") : "H")) &&
                 (!g1 || g1.has((attr.get(id) || {}).g1 || "")) &&
                 (!g2 || g2.has((attr.get(id) || {}).g2 || "")));
@@ -1332,9 +1385,9 @@
             try {
                 const { comps, acts } = await this._childData(d._id);
                 if (token !== this._token) return;
-                const { compIds, actIds } = this._visibleChildren({ comps, acts });
+                const { compIds, actIds } = this._childIds({ comps, acts }, d._free);
                 const children = [];
-                compIds.forEach(id => children.push(Object.assign(this._row(`${d.key}/B${id}`, "B", id, "ZBILESEN", this._parentSet.has(id)), comps.get(id))));
+                compIds.forEach(id => children.push(Object.assign(this._row(`${d.key}/B${id}`, "B", id, "ZBILESEN", this._parentSet.has(id)), comps.get(id), { _free: this._isFree(d._free, id) })));
                 actIds.forEach(id => children.push(Object.assign(this._row(`${d.key}/A${id}`, "A", id, "ZMASRAF_OGESI", false), acts.get(id))));
                 await row.update({ _children: children.length ? children : null, _loaded: true, _busy: false });
 
