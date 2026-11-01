@@ -6,20 +6,20 @@
     "vendor": "Custom",
     "license": "",
     "id": "com.custom.usmtree",
-    "version": "1.7.0",
+    "version": "1.8.0",
     "icon": "",
     "webcomponents": [
         {
             "kind": "main",
             "tag": "custom-usm-tree",
-            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree.js?v=170",
+            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree.js?v=180",
             "integrity": "",
             "ignoreIntegrity": true
         },
         {
             "kind": "builder",
             "tag": "custom-usm-tree-builder",
-            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree_builder.js?v=170",
+            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree_builder.js?v=180",
             "integrity": "",
             "ignoreIntegrity": true
         }
@@ -64,6 +64,10 @@
         "onlyParents": {
             "type": "boolean",
             "default": true
+        },
+        "exportRows": {
+            "type": "integer",
+            "default": 100000
         }
     },
     "methods": {
@@ -138,6 +142,10 @@
                     "description": "orn. DİĞER;ENDÜSTRİYEL"
                 }
             ]
+        },
+        "exportExcel": {
+            "description": "Tum kirilimlar acik Excel'e aktarir; exportRows satirda bolunur (coklu dosya zip)",
+            "parameters": []
         },
         "refresh": {
             "description": "Veriyi yeniden yukler",

@@ -1,10 +1,15 @@
 (function () {
     const TABULATOR_JS = "https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js";
+    const FFLATE_JS = "https://unpkg.com/fflate@0.8.2/esm/browser.js";
     const NONE = "#";
     const CHILD_FILTER = " and (ZBILESEN ne '#' or ZMASRAF_OGESI ne '#')";
     const CHUNK = 40;
     const MAX_HITS = 200;
     const TYPE_LABEL = { M: "Malzeme", B: "Bileşen", A: "Aktivite" };
+    const EXPORT_ROWS = 100000;
+    const XLSX_MAX_ROWS = 1048575;
+    const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    const XLSX_HEAD = ["Seviye", "Ana Malzeme", "Üst Kod", "Kod", "Açıklama", "Grup 1", "Grup 2", "Tür"];
 
     const loadScript = (src) => new Promise((resolve, reject) => {
         if (window.Tabulator) return resolve();
@@ -14,6 +19,101 @@
         script.onerror = () => reject(new Error("Tabulator yüklenemedi"));
         document.head.appendChild(script);
     });
+
+    const SS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+    const PR = "http://schemas.openxmlformats.org/package/2006/relationships";
+    const OR = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    const XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+    const XLSX_STATIC = {
+        "[Content_Types].xml": XML + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>' +
+            '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+            '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+            '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>',
+        "_rels/.rels": XML + `<Relationships xmlns="${PR}"><Relationship Id="rId1" Type="${OR}/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
+        "xl/workbook.xml": XML + `<workbook xmlns="${SS}" xmlns:r="${OR}"><sheets><sheet name="USM" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+        "xl/_rels/workbook.xml.rels": XML + `<Relationships xmlns="${PR}"><Relationship Id="rId1" Type="${OR}/worksheet" Target="worksheets/sheet1.xml"/>` +
+            `<Relationship Id="rId2" Type="${OR}/styles" Target="styles.xml"/></Relationships>`,
+        "xl/styles.xml": XML + `<styleSheet xmlns="${SS}"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>` +
+            '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>' +
+            '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
+            '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+            '<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs>' +
+            '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>'
+    };
+    const xmlEsc = (s) => String(s).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "").replace(/[&<>]/g, c => c === "&" ? "&amp;" : c === "<" ? "&lt;" : "&gt;");
+    const colName = (i) => {
+        let s = "";
+        for (let n = i + 1; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + (n - 1) % 26) + s;
+        return s;
+    };
+    const xlsxPart = (fflate, cols) => {
+        const out = [];
+        const zip = new fflate.Zip((err, data) => { if (err) throw err; out.push(data); });
+        Object.keys(XLSX_STATIC).forEach(name => {
+            const f = new fflate.ZipDeflate(name, { level: 6 });
+            zip.add(f);
+            f.push(fflate.strToU8(XLSX_STATIC[name]), true);
+        });
+        const sheet = new fflate.ZipDeflate("xl/worksheets/sheet1.xml", { level: 6 });
+        zip.add(sheet);
+        let n = 0;
+        let buf = [XML + `<worksheet xmlns="${SS}"><sheetData>`];
+        const flush = (final) => { sheet.push(fflate.strToU8(buf.join("")), final); buf = []; };
+        const row = (cells, style) => {
+            n++;
+            let s = `<row r="${n}">`;
+            cells.forEach((v, i) => {
+                if (v === null || v === undefined || v === "") return;
+                s += typeof v === "number"
+                    ? `<c r="${cols[i]}${n}"${style}><v>${v}</v></c>`
+                    : `<c r="${cols[i]}${n}" t="inlineStr"${style}><is><t>${xmlEsc(v)}</t></is></c>`;
+            });
+            buf.push(s + "</row>");
+            if (buf.length >= 2000) flush(false);
+        };
+        return {
+            rows: () => n,
+            head: (cells) => row(cells, ' s="1"'),
+            add: (cells) => row(cells, ""),
+            finish: () => { buf.push("</sheetData></worksheet>"); flush(true); zip.end(); return out; }
+        };
+    };
+    const zipFiles = (fflate, files) => {
+        const out = [];
+        const zip = new fflate.Zip((err, data) => { if (err) throw err; out.push(data); });
+        files.forEach(f => {
+            const entry = new fflate.ZipPassThrough(f.name);
+            zip.add(entry);
+            f.data.forEach((c, i) => entry.push(c, i === f.data.length - 1));
+        });
+        zip.end();
+        return out;
+    };
+    const download = (blob, name) => {
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    };
+    const tick = () => new Promise(r => setTimeout(r, 0));
+    const groupChildren = (recs) => {
+        const out = new Map();
+        recs.forEach(r => {
+            let kind, cid;
+            if (r.ZBILESEN && r.ZBILESEN !== NONE) { kind = "comps"; cid = r.ZBILESEN; }
+            else if (r.ZMASRAF_OGESI && r.ZMASRAF_OGESI !== NONE) { kind = "acts"; cid = r.ZMASRAF_OGESI; }
+            else return;
+            if (!out.has(r.ZMALZEME)) out.set(r.ZMALZEME, { comps: new Map(), acts: new Map() });
+            const map = out.get(r.ZMALZEME)[kind];
+            if (!map.has(cid)) map.set(cid, {});
+            addValue(map.get(cid), r);
+        });
+        return out;
+    };
 
     const q = (v) => String(v).replace(/'/g, "''");
     const orEq = (field, ids) => "(" + ids.map(id => `${field} eq '${q(id)}'`).join(" or ") + ")";
@@ -105,7 +205,11 @@
         <style>
             :host { display: block; width: 100%; height: 100%; background-color: #fff; }
             .wrap { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; font-family: "72", Arial, sans-serif; }
-            #status { flex: 0 0 auto; font-size: 11px; color: #9a9a9a; padding: 4px 6px; }
+            .bar { flex: 0 0 auto; display: flex; align-items: center; }
+            #status { flex: 1 1 auto; font-size: 11px; color: #9a9a9a; padding: 4px 6px; }
+            #xls { flex: 0 0 auto; margin: 2px 6px; padding: 1px 8px; font: 11px Arial, sans-serif; cursor: pointer; border: 1px solid #dadada; background: #fff; border-radius: 3px; color: #444; }
+            #xls:hover:not(:disabled) { background: #ffe8e8; }
+            #xls:disabled { color: #999; cursor: default; }
             #status.error { color: #bb0000; white-space: pre-wrap; }
             #table { flex: 1 1 auto; min-height: 0; font-size: 12px; }
             .tabulator { border: 0 !important; background: #fff !important; font-size: 12px; color: #333; }
@@ -134,8 +238,9 @@
             .tabulator-row.row-placeholder { color: #aaa; }
             .tabulator-row .tabulator-data-tree-control { border: 1px solid #bdbdbd !important; background: #fff !important; }
             .tabulator-row .tabulator-data-tree-control .tabulator-data-tree-control-expand, .tabulator-row .tabulator-data-tree-control .tabulator-data-tree-control-expand:after,
-            .tabulator-row .tabulator-data-tree-control .tabulator-data-tree-control-collapse, .tabulator-row .tabulator-data-tree-control .tabulator-data-tree-control-collapse:after { background: #7a7a7a !important; }
+            .tabulator-row .tabulator-data-tree-control .tabulator-data-tree-control-collapse:after { background: #7a7a7a !important; }
             .tabulator-row .tabulator-data-tree-branch { border-color: #d6d6d6 !important; }
+            .tabulator-row.leaf .tabulator-data-tree-branch { margin-right: 23px; }
             .tabulator .tabulator-tableholder .tabulator-range-overlay .tabulator-range,
             .tabulator .tabulator-tableholder .tabulator-range-overlay .tabulator-range-cell-active { border-color: #ff0000 !important; }
             .tabulator .tabulator-tableholder .tabulator-range-overlay .tabulator-range.tabulator-range-active::after { background-color: #ff0000 !important; }
@@ -189,7 +294,7 @@
             .gpop .hits span { flex: 0 0 auto; color: #888; }
         </style>
         <div class="wrap">
-            <div id="status">Yükleniyor…</div>
+            <div class="bar"><div id="status">Yükleniyor…</div><button id="xls">Excel'e aktar</button></div>
             <div id="table"></div>
             <div id="pop" class="pop" hidden>
                 <div class="pop-h">Malzeme seçimi <button class="x" id="popClose" title="Kapat">×</button></div>
@@ -230,6 +335,8 @@
             this._root = shadowRoot;
             this._statusEl = shadowRoot.getElementById("status");
             this._tableEl = shadowRoot.getElementById("table");
+            this._xlsBtn = shadowRoot.getElementById("xls");
+            this._xlsBtn.addEventListener("click", () => this.exportExcel());
             this._table = null;
             this._token = 0;
             this._matFilter = "";
@@ -323,6 +430,142 @@
             return this._reload(true);
         }
 
+        async exportExcel() {
+            if (this._exporting) return;
+            if (!this._table || !this._ids.length) {
+                this._setStatus("Aktarılacak veri yok.");
+                return;
+            }
+            this._exporting = true;
+            const btn = this._xlsBtn;
+            const step = (text) => { btn.textContent = text; };
+            btn.disabled = true;
+            const token = this._token;
+            const ids = this._ids.slice();
+            try {
+                const fflate = await import(FFLATE_JS);
+                step("Excel: veri yükleniyor…");
+                const [tree] = await Promise.all([
+                    this._loadAllChildren(token, (i, n) => step(`Excel: veri ${i}/${n}`)),
+                    Promise.all([this._attrPromise, this._matValsPromise])
+                        .then(() => this._attrsReady ? null : this._loadMasterRanges("ZMALZEME", this._allIds, token)),
+                    this._actPromise,
+                    this._loadMasterRanges("ZBILESEN", Array.from(this._compSet).filter(id => !this._desc.ZBILESEN.has(id)).sort(cmpCode), token)
+                ]);
+                if (token !== this._token) return;
+                if (!this._matVals) throw new Error(this._matValsError || "malzeme değerleri alınamadı");
+
+                const total = this._exportCount(ids, tree);
+                const limit = Math.min(this.exportRows > 0 ? this.exportRows : EXPORT_ROWS, XLSX_MAX_ROWS);
+                const head = XLSX_HEAD.concat(this._valueTitles);
+                const cols = head.map((_, i) => colName(i));
+                const parts = [];
+                let part = null;
+                let written = 0;
+                for (const cells of this._exportRows(ids, tree)) {
+                    if (part && (part.rows() - 1 >= XLSX_MAX_ROWS || (cells[0] === 1 && part.rows() - 1 >= limit))) {
+                        parts.push(part.finish());
+                        part = null;
+                    }
+                    if (!part) {
+                        part = xlsxPart(fflate, cols);
+                        part.head(head);
+                    }
+                    part.add(cells);
+                    if (++written % 5000 === 0) {
+                        step(`Excel: ${nf.format(written)} / ${nf.format(total)}`);
+                        await tick();
+                        if (token !== this._token) return;
+                    }
+                }
+                parts.push(part.finish());
+                step("Excel: dosya hazırlanıyor…");
+                await tick();
+                const base = `USM_${this._loadParams().version.replace(/^public\./, "")}_${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`;
+                if (parts.length === 1) {
+                    download(new Blob(parts[0], { type: XLSX_MIME }), base + ".xlsx");
+                } else {
+                    const files = parts.map((data, i) => ({ name: `${base}_${String(i + 1).padStart(2, "0")}.xlsx`, data }));
+                    download(new Blob(zipFiles(fflate, files), { type: "application/zip" }), base + ".zip");
+                }
+                this._setStatus(`Excel: ${nf.format(written)} satır, ${parts.length} dosya indirildi.`);
+            } catch (e) {
+                if (token === this._token && !(e && e.name === "AbortError")) this._setStatus("Excel aktarılamadı: " + errText(e), true);
+            } finally {
+                this._exporting = false;
+                btn.disabled = false;
+                step("Excel'e aktar");
+            }
+        }
+
+        async _loadAllChildren(token, progress) {
+            const parents = this._allIds.filter(id => this._parentSet.has(id));
+            const parts = chunks(parents, 100);
+            const tree = new Map();
+            let done = 0;
+            await runPool(parts.map(part => async () => {
+                if (token !== this._token) return;
+                const recs = await this._get("FactDataAggregation", {
+                    $select: "ZMALZEME,ZBILESEN,ZMASRAF_OGESI,Date,ZPARAMETRE,ZMIKTAR",
+                    $filter: `${this._baseFilter} and ZMALZEME ge '${q(part[0])}' and ZMALZEME le '${q(part[part.length - 1])}'${CHILD_FILTER}`
+                });
+                groupChildren(recs).forEach((c, id) => tree.set(id, c));
+                progress(++done, parts.length);
+            }), 6);
+            if (token !== this._token) return tree;
+            parents.forEach(id => {
+                const c = tree.get(id) || { comps: new Map(), acts: new Map() };
+                c.compIds = Array.from(c.comps.keys()).sort();
+                c.actIds = Array.from(c.acts.keys()).sort();
+                tree.set(id, c);
+                this._childCache.set(id, Promise.resolve(c));
+            });
+            return tree;
+        }
+
+        _exportCount(ids, tree) {
+            const memo = new Map();
+            const sub = (id, path) => {
+                if (memo.has(id)) return memo.get(id);
+                const c = tree.get(id);
+                let n = c ? c.actIds.length : 0;
+                if (c) c.compIds.forEach(k => {
+                    n++;
+                    if (tree.has(k) && !path.has(k)) { path.add(k); n += sub(k, path); path.delete(k); }
+                });
+                memo.set(id, n);
+                return n;
+            };
+            return ids.reduce((s, id) => s + 1 + sub(id, new Set([id])), 0);
+        }
+
+        *_exportRows(ids, tree) {
+            const line = (lvl, top, parent, id, kind, vals) => {
+                const dim = kind === "M" ? "ZMALZEME" : kind === "B" ? "ZBILESEN" : "ZMASRAF_OGESI";
+                const a = this._attrOf(dim, id);
+                const cells = [lvl, top, parent, id, this._desc[dim].get(id) || "", a.g1, a.g2, TYPE_LABEL[kind]];
+                this._valueFields.forEach(f => cells.push(vals && vals[f] !== undefined ? Math.round(vals[f] * 1e6) / 1e6 : null));
+                return cells;
+            };
+            const walk = function* (pid, top, lvl, path) {
+                const c = tree.get(pid);
+                if (!c) return;
+                for (const id of c.compIds) {
+                    yield line(lvl, top, pid, id, "B", c.comps.get(id));
+                    if (tree.has(id) && !path.has(id)) {
+                        path.add(id);
+                        yield* walk(id, top, lvl + 1, path);
+                        path.delete(id);
+                    }
+                }
+                for (const id of c.actIds) yield line(lvl, top, pid, id, "A", c.acts.get(id));
+            };
+            for (const id of ids) {
+                yield line(1, id, "", id, "M", this._matVals.get(id));
+                yield* walk(id, id, 2, new Set([id]));
+            }
+        }
+
         _loadParams() {
             let version = memberId(this.version);
             if (version && version.indexOf(".") < 0) version = "public." + version;
@@ -395,8 +638,8 @@
                 this._compSet = new Set(compRows.map(r => r.ZBILESEN));
                 this._ids = this._filteredIds();
                 this._buildTable(dates, this._ids.map((id, pos) => this._mRow(id, pos)));
-                this._loadMaterialValues(token);
-                this._loadAllActivityDescriptions();
+                this._matValsPromise = this._loadMaterialValues(token);
+                this._actPromise = this._loadAllActivityDescriptions();
                 this._attrPromise = this._loadParentAttrs(token);
             } catch (e) {
                 if (token !== this._token) return;
@@ -422,30 +665,36 @@
         }
 
         async _loadParentAttrs(token) {
-            const segs = [];
-            let cur = [];
-            this._allIds.forEach(id => {
-                const prev = cur[cur.length - 1];
-                const far = prev !== undefined && (!/^\d+$/.test(id) || !/^\d+$/.test(prev) || id.length !== prev.length || Number(id) - Number(prev) > 500);
-                if (cur.length && (far || cur.length >= 300)) { segs.push(cur); cur = []; }
-                cur.push(id);
-            });
-            if (cur.length) segs.push(cur);
             try {
-                await runPool(segs.map(seg => async () => {
-                    if (token !== this._token) return;
-                    const rows = await this._get("ZMALZEMEMaster", {
-                        $select: "ID,Description,MALZ_GRUP1,MALZ_GRUP2",
-                        $filter: seg.length === 1 ? `ID eq '${q(seg[0])}'` : `ID ge '${q(seg[0])}' and ID le '${q(seg[seg.length - 1])}'`
-                    });
-                    rows.forEach(r => { if (this._allIndex.has(r.ID)) this._storeMaster("ZMALZEME", r); });
-                }), 6);
+                await this._loadMasterRanges("ZMALZEME", this._allIds, token);
             } catch (e) {
                 return;
             }
             if (token !== this._token) return;
             this._attrsReady = true;
             if (this._grp[1] || this._grp[2]) this._applyFilter();
+        }
+
+        async _loadMasterRanges(dim, ids, token) {
+            const want = new Set(ids);
+            const segs = [];
+            let cur = [];
+            ids.forEach(id => {
+                const prev = cur[cur.length - 1];
+                const far = prev !== undefined && (!/^\d+$/.test(id) || !/^\d+$/.test(prev) || id.length !== prev.length || Number(id) - Number(prev) > 500);
+                if (cur.length && (far || cur.length >= 300)) { segs.push(cur); cur = []; }
+                cur.push(id);
+            });
+            if (cur.length) segs.push(cur);
+            const select = this._attr[dim] ? "ID,Description,MALZ_GRUP1,MALZ_GRUP2" : "ID,Description";
+            await runPool(segs.map(seg => async () => {
+                if (token !== this._token) return;
+                const rows = await this._get(`${dim}Master`, {
+                    $select: select,
+                    $filter: seg.length === 1 ? `ID eq '${q(seg[0])}'` : `ID ge '${q(seg[0])}' and ID le '${q(seg[seg.length - 1])}'`
+                });
+                rows.forEach(r => { if (want.has(r.ID)) this._storeMaster(dim, r); });
+            }), 6);
         }
 
         _storeMaster(dim, r) {
@@ -582,21 +831,9 @@
         _childData(id) {
             if (!this._childCache.has(id)) {
                 const p = this._get("FactDataAggregation", {
-                    $select: "Date,ZPARAMETRE,ZBILESEN,ZMASRAF_OGESI,ZMIKTAR",
+                    $select: "ZMALZEME,Date,ZPARAMETRE,ZBILESEN,ZMASRAF_OGESI,ZMIKTAR",
                     $filter: `${this._baseFilter} and ZMALZEME eq '${q(id)}'${CHILD_FILTER}`
-                }).then(recs => {
-                    const comps = new Map();
-                    const acts = new Map();
-                    recs.forEach(r => {
-                        let map, cid;
-                        if (r.ZBILESEN && r.ZBILESEN !== NONE) { map = comps; cid = r.ZBILESEN; }
-                        else if (r.ZMASRAF_OGESI && r.ZMASRAF_OGESI !== NONE) { map = acts; cid = r.ZMASRAF_OGESI; }
-                        else return;
-                        if (!map.has(cid)) map.set(cid, {});
-                        addValue(map.get(cid), r);
-                    });
-                    return { comps, acts };
-                });
+                }).then(recs => groupChildren(recs).get(id) || { comps: new Map(), acts: new Map() });
                 p.catch(() => this._childCache.delete(id));
                 this._childCache.set(id, p);
             }
@@ -896,12 +1133,14 @@
                 { title: "Tür", field: "type", width: 75, cssClass: "soft" }
             ];
             this._valueFields = [];
+            this._valueTitles = [];
             dates.forEach(d => {
                 columns.push({
                     title: fmtDate(d),
                     cssClass: "pgroup",
                     columns: this._params.map((p, i) => {
                         this._valueFields.push(fieldOf(d, p));
+                        this._valueTitles.push(`${fmtDate(d)} ${this._paramDesc.get(p) || p}`);
                         return {
                             title: this._paramDesc.get(p) || p, headerTooltip: p, headerWordWrap: true, field: fieldOf(d, p), width: 112,
                             hozAlign: "right", formatter: numFormatter, accessorClipboard: numCopy, cssClass: i === 0 ? "pstart" : ""
@@ -931,7 +1170,9 @@
                 dataTreeElementColumn: "name",
                 placeholder: "Filtreye uyan malzeme yok",
                 rowFormatter: (row) => {
-                    const k = row.getData()._kind;
+                    const d = row.getData();
+                    const k = d._kind;
+                    row.getElement().classList.toggle("leaf", !(Array.isArray(d._children) && d._children.length));
                     if (k === "A") row.getElement().classList.add("row-activity");
                     if (k === "P") row.getElement().classList.add("row-placeholder");
                     if (k === "T") row.getElement().classList.add("row-total");
