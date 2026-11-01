@@ -144,7 +144,7 @@
         if (el.classList.contains("dash") !== empty) el.classList.toggle("dash", empty);
         if (!empty) return nf.format(v);
         const d = cell.getData();
-        return d._kind === "P" || ((d._kind === "M" || d._kind === "T") && d.desc === null) ? "" : "–";
+        return d._kind === "P" || d._kind === "L" || ((d._kind === "M" || d._kind === "T") && d.desc === null) ? "" : "–";
     };
     const addValue = (target, r) => {
         if (r.ZMIKTAR === null || r.ZMIKTAR === undefined) return;
@@ -158,7 +158,7 @@
         const el = document.createElement("span");
         if (d.desc === null || d.desc === undefined) {
             el.className = "loading";
-            el.innerHTML = d._kind === "T" ? "<i></i>hesaplanıyor…" : "<i></i>yükleniyor…";
+            el.innerHTML = d._kind === "T" || d._kind === "L" ? "<i></i>hesaplanıyor…" : "<i></i>yükleniyor…";
         } else {
             el.textContent = d.desc;
         }
@@ -225,6 +225,7 @@
             .tabulator-row.row-total { font-weight: 700; color: #1f1f1f; }
             .tabulator-row.row-total .tabulator-cell { background-image: linear-gradient(#bdbdbd, #bdbdbd); }
             .tabulator-row.row-total .tabulator-cell.soft { font-weight: 400; color: #8a8a8a; }
+            .tabulator-row.row-total.row-leaf { font-weight: 400; color: #444; }
             .tabulator-row .tabulator-cell.pstart, .tabulator .tabulator-header .tabulator-col.pgroup { box-shadow: inset 1px 0 0 #c6c6c6; }
             .tabulator .tabulator-header .tabulator-col:not(.tabulator-col-group)::after { content: ""; position: absolute; left: 3px; right: 3px; bottom: 0; border-bottom: 2px solid #595959; pointer-events: none; }
             .tabulator .tabulator-header .tabulator-col.tabulator-col-group > .tabulator-col-content { color: #7a7a7a; font-weight: 400; }
@@ -551,7 +552,7 @@
                 const fflate = await import(FFLATE_JS);
                 step("Excel: veri yükleniyor…");
                 const [tree] = await Promise.all([
-                    this._loadAllChildren(token, (i, n) => step(`Excel: veri ${i}/${n}`)),
+                    this._loadAllChildren(token),
                     Promise.all([this._attrPromise, this._matValsPromise, this._consPromise])
                         .then(() => this._attrsReady ? null : this._loadMasterRanges("ZMALZEME", this._allIds, token)),
                     this._actPromise,
@@ -603,20 +604,13 @@
             }
         }
 
-        async _loadAllChildren(token, progress) {
+        async _loadAllChildren(token) {
             const parents = this._allIds.filter(id => this._parentSet.has(id));
-            const parts = chunks(parents, 100);
-            const tree = new Map();
-            let done = 0;
-            await runPool(parts.map(part => async () => {
-                if (token !== this._token) return;
-                const recs = await this._get("FactDataAggregation", {
-                    $select: "ZMALZEME,ZBILESEN,ZMASRAF_OGESI,Date,ZPARAMETRE,ZMIKTAR",
-                    $filter: `${this._baseFilter} and ZMALZEME ge '${q(part[0])}' and ZMALZEME le '${q(part[part.length - 1])}'${CHILD_FILTER}`
-                });
-                groupChildren(recs).forEach((c, id) => tree.set(id, c));
-                progress(++done, parts.length);
-            }), 6);
+            const recs = await this._get("FactDataAggregation", {
+                $select: "ZMALZEME,ZBILESEN,ZMASRAF_OGESI,Date,ZPARAMETRE,ZMIKTAR",
+                $filter: this._baseFilter + CHILD_FILTER
+            });
+            const tree = groupChildren(recs);
             if (token !== this._token) return tree;
             parents.forEach(id => {
                 const c = tree.get(id) || { comps: new Map(), acts: new Map() };
@@ -708,6 +702,8 @@
             this._usedSet = null;
             this._parentsPromise = null;
             this._cons = null;
+            this._leafOwn = null;
+            this._leafError = null;
 
             this._pid = (this.providerId || "").trim();
             this._params = splitList(this.parameters);
@@ -753,6 +749,7 @@
                 this._buildTable(dates, this._ids.map((id, pos) => this._mRow(id, pos)));
                 this._matValsPromise = this._loadMaterialValues(token);
                 this._consPromise = this._loadConsumption(token);
+                this._matValsPromise.then(() => this._loadLeafTotals(token));
                 this._actPromise = this._loadAllActivityDescriptions();
                 this._attrPromise = this._loadParentAttrs(token);
                 if (this._compMatch) this._refreshUsed();
@@ -835,7 +832,7 @@
             if (!this._table || !this._allIds.length) return;
             this._ids = this._filteredIds();
             this._blocks = new Map();
-            this._table.replaceData([this._totalRow()].concat(this._ids.map((id, pos) => this._mRow(id, pos)))).then(() => this._loadVisible());
+            this._table.replaceData([this._totalRow(), this._leafRow()].concat(this._ids.map((id, pos) => this._mRow(id, pos)))).then(() => this._loadVisible());
             this._updateStatus();
         }
 
@@ -893,10 +890,66 @@
         }
 
         async _refreshTotalRow() {
-            const row = this._table && this._table.getRow("TOTAL");
-            if (!row) return;
-            await this._table.updateData([this._totalRow()]);
-            row.reformat();
+            if (!this._table || !this._table.getRow("TOTAL")) return;
+            await this._table.updateData([this._totalRow(), this._leafRow()]);
+            ["TOTAL", "LEAF"].forEach(k => { const r = this._table.getRow(k); if (r) r.reformat(); });
+        }
+
+        _leafRow() {
+            const row = { key: "LEAF", name: "Alt seviye bileşen toplamı", type: "", g1: "", g2: "", desc: this._leafError || (this._leafOwn ? "" : null), _kind: "L" };
+            this._valueFields.forEach(f => { row[f] = null; });
+            if (this._leafOwn) this._ids.forEach(id => {
+                const v = this._leafOwn.get(id);
+                if (v) for (const d in v) { const f = fieldOf(d, USE_PARAM); row[f] = (row[f] || 0) + v[d]; }
+            });
+            return row;
+        }
+
+        async _loadLeafTotals(token) {
+            const usage = new Map();
+            try {
+                const rows = await this._get("FactDataAggregation", {
+                    $select: "ZMALZEME,ZBILESEN,Date,ZMIKTAR",
+                    $filter: `${this._scopeFilter} and ZPARAMETRE eq '${USE_PARAM}' and ZBILESEN ne '#'`
+                });
+                rows.forEach(r => {
+                    if (!r.ZMIKTAR) return;
+                    let m = usage.get(r.ZMALZEME);
+                    if (!m) usage.set(r.ZMALZEME, m = new Map());
+                    let v = m.get(r.ZBILESEN);
+                    if (!v) m.set(r.ZBILESEN, v = {});
+                    v[r.Date] = (v[r.Date] || 0) + r.ZMIKTAR;
+                });
+                await this._consPromise;
+            } catch (e) {
+                if (token !== this._token) return;
+                this._leafError = "hesaplanamadı";
+                this._refreshTotalRow();
+                return;
+            }
+            if (token !== this._token) return;
+            const memo = new Map();
+            const visiting = new Set();
+            const prod = (id, d) => ((this._matVals && this._matVals.get(id)) || {})[fieldOf(d, PROD_PARAM)] || ((this._cons && this._cons.get(id)) || {})[d];
+            const own = (id) => {
+                if (memo.has(id)) return memo.get(id);
+                const out = {};
+                visiting.add(id);
+                usage.get(id).forEach((u, k) => {
+                    const sub = usage.has(k) && !visiting.has(k) ? own(k) : null;
+                    for (const d in u) {
+                        let v = u[d];
+                        if (sub) { const p = prod(k, d); v = (p ? v / p : 1) * (sub[d] || 0); }
+                        if (v) out[d] = (out[d] || 0) + v;
+                    }
+                });
+                visiting.delete(id);
+                memo.set(id, out);
+                return out;
+            };
+            usage.forEach((_, id) => own(id));
+            this._leafOwn = memo;
+            this._refreshTotalRow();
         }
 
         _setStatus(text, isError) {
@@ -1306,8 +1359,8 @@
 
             this._table = new window.Tabulator(this._tableEl, {
                 index: "key",
-                data: [this._totalRow()].concat(rows),
-                frozenRows: 1,
+                data: [this._totalRow(), this._leafRow()].concat(rows),
+                frozenRows: 2,
                 height: "100%",
                 rowHeight: 26,
                 layout: "fitData",
@@ -1330,7 +1383,8 @@
                     row.getElement().classList.toggle("leaf", !(Array.isArray(d._children) && d._children.length));
                     if (k === "A") row.getElement().classList.add("row-activity");
                     if (k === "P") row.getElement().classList.add("row-placeholder");
-                    if (k === "T") row.getElement().classList.add("row-total");
+                    if (k === "T" || k === "L") row.getElement().classList.add("row-total");
+                    if (k === "L") row.getElement().classList.add("row-leaf");
                 }
             });
             this._table.on("tableBuilt", () => this._loadVisible());
