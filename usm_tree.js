@@ -9,6 +9,10 @@
     const USE_PARAM = "USM0013";
     const PROD_PARAM = "USM0015";
     const CONS_PARAM = "USM0004";
+    const ALT = "ALT";
+    const ALT_TITLE = "Alt Seviye Bileşenleri";
+    const TOT = "TOT";
+    const EMPTY = {};
     const EXPORT_ROWS = 200000;
     const XLSX_MAX_ROWS = 1048575;
     const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -54,11 +58,11 @@
         const out = [];
         const zip = new fflate.Zip((err, data) => { if (err) throw err; out.push(data); });
         Object.keys(XLSX_STATIC).forEach(name => {
-            const f = new fflate.ZipDeflate(name, { level: 6 });
+            const f = new fflate.ZipDeflate(name, { level: 1 });
             zip.add(f);
             f.push(fflate.strToU8(XLSX_STATIC[name]), true);
         });
-        const sheet = new fflate.ZipDeflate("xl/worksheets/sheet1.xml", { level: 6 });
+        const sheet = new fflate.ZipDeflate("xl/worksheets/sheet1.xml", { level: 1 });
         zip.add(sheet);
         let n = 0;
         let buf = [XML + `<worksheet xmlns="${SS}"><sheetData>`];
@@ -144,7 +148,7 @@
         if (el.classList.contains("dash") !== empty) el.classList.toggle("dash", empty);
         if (!empty) return nf.format(v);
         const d = cell.getData();
-        return d._kind === "P" || d._kind === "L" || ((d._kind === "M" || d._kind === "T") && d.desc === null) ? "" : "–";
+        return d._kind === "P" || ((d._kind === "M" || d._kind === "T") && d.desc === null) ? "" : "–";
     };
     const addValue = (target, r) => {
         if (r.ZMIKTAR === null || r.ZMIKTAR === undefined) return;
@@ -158,7 +162,7 @@
         const el = document.createElement("span");
         if (d.desc === null || d.desc === undefined) {
             el.className = "loading";
-            el.innerHTML = d._kind === "T" || d._kind === "L" ? "<i></i>hesaplanıyor…" : "<i></i>yükleniyor…";
+            el.innerHTML = d._kind === "T" ? "<i></i>hesaplanıyor…" : "<i></i>yükleniyor…";
         } else {
             el.textContent = d.desc;
         }
@@ -225,7 +229,6 @@
             .tabulator-row.row-total { font-weight: 700; color: #1f1f1f; }
             .tabulator-row.row-total .tabulator-cell { background-image: linear-gradient(#bdbdbd, #bdbdbd); }
             .tabulator-row.row-total .tabulator-cell.soft { font-weight: 400; color: #8a8a8a; }
-            .tabulator-row.row-total.row-leaf { font-weight: 400; color: #444; }
             .tabulator-row .tabulator-cell.pstart, .tabulator .tabulator-header .tabulator-col.pgroup { box-shadow: inset 1px 0 0 #c6c6c6; }
             .tabulator .tabulator-header .tabulator-col:not(.tabulator-col-group)::after { content: ""; position: absolute; left: 3px; right: 3px; bottom: 0; border-bottom: 2px solid #595959; pointer-events: none; }
             .tabulator .tabulator-header .tabulator-col.tabulator-col-group > .tabulator-col-content { color: #7a7a7a; font-weight: 400; }
@@ -553,7 +556,7 @@
                 step("Excel: veri yükleniyor…");
                 const [tree] = await Promise.all([
                     this._loadAllChildren(token),
-                    Promise.all([this._attrPromise, this._matValsPromise, this._consPromise])
+                    Promise.all([this._attrPromise, this._matValsPromise, this._consPromise, this._leafPromise])
                         .then(() => this._attrsReady ? null : this._loadMasterRanges("ZMALZEME", this._allIds, token)),
                     this._actPromise,
                     this._loadMasterRanges("ZBILESEN", Array.from(this._compSet).filter(id => !this._desc.ZBILESEN.has(id)).sort(cmpCode), token)
@@ -644,7 +647,12 @@
                 const dim = kind === "M" ? "ZMALZEME" : kind === "B" ? "ZBILESEN" : "ZMASRAF_OGESI";
                 const a = this._attrOf(dim, id);
                 const cells = [lvl, top, parent, id, this._desc[dim].get(id) || "", a.g1, a.g2, TYPE_LABEL[kind]];
-                this._valueFields.forEach(f => cells.push(vals && vals[f] !== undefined ? Math.round(vals[f] * 1e6) / 1e6 : null));
+                const all = this._addTotals(Object.assign(this._altFor(kind, id, vals), vals));
+                const fields = this._valueFields;
+                for (let i = 0; i < fields.length; i++) {
+                    const v = all[fields[i]];
+                    cells.push(v !== undefined && v !== null ? Math.round(v * 1e6) / 1e6 : null);
+                }
                 return cells;
             };
             const walk = function* (pid, top, lvl, path, free, scale) {
@@ -703,7 +711,6 @@
             this._parentsPromise = null;
             this._cons = null;
             this._leafOwn = null;
-            this._leafError = null;
 
             this._pid = (this.providerId || "").trim();
             this._params = splitList(this.parameters);
@@ -749,7 +756,7 @@
                 this._buildTable(dates, this._ids.map((id, pos) => this._mRow(id, pos)));
                 this._matValsPromise = this._loadMaterialValues(token);
                 this._consPromise = this._loadConsumption(token);
-                this._matValsPromise.then(() => this._loadLeafTotals(token));
+                this._leafPromise = this._matValsPromise.then(() => this._loadLeafTotals(token));
                 this._actPromise = this._loadAllActivityDescriptions();
                 this._attrPromise = this._loadParentAttrs(token);
                 if (this._compMatch) this._refreshUsed();
@@ -832,7 +839,7 @@
             if (!this._table || !this._allIds.length) return;
             this._ids = this._filteredIds();
             this._blocks = new Map();
-            this._table.replaceData([this._totalRow(), this._leafRow()].concat(this._ids.map((id, pos) => this._mRow(id, pos)))).then(() => this._loadVisible());
+            this._table.replaceData([this._totalRow()].concat(this._ids.map((id, pos) => this._mRow(id, pos)))).then(() => this._loadVisible());
             this._updateStatus();
         }
 
@@ -841,11 +848,10 @@
             const sums = { desc: `${nf.format(this._ids.length)} malzeme` };
             this._valueFields.forEach(f => { sums[f] = null; });
             this._ids.forEach(id => {
-                const v = this._matVals.get(id);
-                if (!v) return;
+                const v = Object.assign({}, this._matVals.get(id), this._altFor("M", id));
                 for (const f in v) sums[f] = (sums[f] || 0) + v[f];
             });
-            return sums;
+            return this._addTotals(sums);
         }
 
         _totalRow() {
@@ -890,19 +896,65 @@
         }
 
         async _refreshTotalRow() {
-            if (!this._table || !this._table.getRow("TOTAL")) return;
-            await this._table.updateData([this._totalRow(), this._leafRow()]);
-            ["TOTAL", "LEAF"].forEach(k => { const r = this._table.getRow(k); if (r) r.reformat(); });
+            const row = this._table && this._table.getRow("TOTAL");
+            if (!row) return;
+            await this._table.updateData([this._totalRow()]);
+            row.reformat();
         }
 
-        _leafRow() {
-            const row = { key: "LEAF", name: "Alt seviye bileşen toplamı", type: "", g1: "", g2: "", desc: this._leafError || (this._leafOwn ? "" : null), _kind: "L" };
-            this._valueFields.forEach(f => { row[f] = null; });
-            if (this._leafOwn) this._ids.forEach(id => {
-                const v = this._leafOwn.get(id);
-                if (v) for (const d in v) { const f = fieldOf(d, USE_PARAM); row[f] = (row[f] || 0) + v[d]; }
+        _prod(id, d) {
+            return ((this._matVals && this._matVals.get(id)) || EMPTY)[fieldOf(d, PROD_PARAM)] || ((this._cons && this._cons.get(id)) || EMPTY)[d];
+        }
+
+        _addTotals(o) {
+            const plan = this._totPlan;
+            for (let i = 0; i < plan.length; i++) {
+                const parts = plan[i].parts;
+                let sum = 0;
+                for (let j = 0; j < parts.length; j++) { const v = o[parts[j]]; if (v) sum += v; }
+                if (sum) o[plan[i].tot] = sum;
+            }
+            return o;
+        }
+
+        _altFor(kind, id, vals) {
+            const out = {};
+            if (!this._leafOwn || kind === "A") return out;
+            const sub = this._leafOwn.get(id);
+            const dates = this._dates, fUse = this._fUse, fProd = this._fProd, fAlt = this._fAlt;
+            if (kind === "M") {
+                if (sub) for (let i = 0; i < dates.length; i++) { const x = sub[dates[i]]; if (x) out[fAlt[i]] = x; }
+                return out;
+            }
+            if (!vals) return out;
+            const own = sub && ((this._matVals && this._matVals.get(id)) || EMPTY);
+            const cons = sub && ((this._cons && this._cons.get(id)) || EMPTY);
+            for (let i = 0; i < dates.length; i++) {
+                const u = vals[fUse[i]];
+                if (!u) continue;
+                let x = u;
+                if (sub) { const p = own[fProd[i]] || cons[dates[i]]; x = (p ? u / p : 1) * (sub[dates[i]] || 0); }
+                if (x) out[fAlt[i]] = x;
+            }
+            return out;
+        }
+
+        async _applyAlt() {
+            const updates = [];
+            this._valCache.forEach((u, id) => {
+                const alt = this._addTotals(this._altFor("M", id));
+                Object.assign(u, alt);
+                if (this._table && this._table.getRow(u.key)) updates.push(Object.assign({ key: u.key }, alt));
             });
-            return row;
+            if (!this._table) return;
+            if (updates.length) await this._table.updateData(updates);
+            const walk = (rows) => rows.forEach(r => {
+                const d = r.getData();
+                if (d._kind === "B") r.update(this._addTotals(this._altFor("B", d._id, d)));
+                if (d._loaded) walk(r.getTreeChildren());
+            });
+            walk(this._table.getRows().filter(r => r.getData()._loaded));
+            this._refreshTotalRow();
         }
 
         async _loadLeafTotals(token) {
@@ -922,15 +974,11 @@
                 });
                 await this._consPromise;
             } catch (e) {
-                if (token !== this._token) return;
-                this._leafError = "hesaplanamadı";
-                this._refreshTotalRow();
                 return;
             }
             if (token !== this._token) return;
             const memo = new Map();
             const visiting = new Set();
-            const prod = (id, d) => ((this._matVals && this._matVals.get(id)) || {})[fieldOf(d, PROD_PARAM)] || ((this._cons && this._cons.get(id)) || {})[d];
             const own = (id) => {
                 if (memo.has(id)) return memo.get(id);
                 const out = {};
@@ -939,7 +987,7 @@
                     const sub = usage.has(k) && !visiting.has(k) ? own(k) : null;
                     for (const d in u) {
                         let v = u[d];
-                        if (sub) { const p = prod(k, d); v = (p ? v / p : 1) * (sub[d] || 0); }
+                        if (sub) { const p = this._prod(k, d); v = (p ? v / p : 1) * (sub[d] || 0); }
                         if (v) out[d] = (out[d] || 0) + v;
                     }
                 });
@@ -949,7 +997,7 @@
             };
             usage.forEach((_, id) => own(id));
             this._leafOwn = memo;
-            this._refreshTotalRow();
+            this._applyAlt();
         }
 
         _setStatus(text, isError) {
@@ -1332,6 +1380,9 @@
 
         _buildTable(dates, rows) {
             this._dates = dates;
+            this._fUse = dates.map(d => fieldOf(d, USE_PARAM));
+            this._fProd = dates.map(d => fieldOf(d, PROD_PARAM));
+            this._fAlt = dates.map(d => fieldOf(d, ALT));
             this._destroyTable();
             const columns = [
                 { title: "Kod", field: "name", width: 260, frozen: true, titleFormatter: () => this._kodHeaderEl },
@@ -1342,15 +1393,18 @@
             ];
             this._valueFields = [];
             this._valueTitles = [];
-            dates.forEach(d => {
+            const valueParams = [].concat(...this._params.map(p => p === USE_PARAM ? [p, ALT] : [p]));
+            this._totPlan = valueParams.map(p => ({ tot: fieldOf(TOT, p), parts: dates.map(d => fieldOf(d, p)) }));
+            [TOT].concat(dates).forEach(d => {
                 columns.push({
-                    title: fmtDate(d),
+                    title: d === TOT ? "Toplam" : fmtDate(d),
                     cssClass: "pgroup",
-                    columns: this._params.map((p, i) => {
+                    columns: valueParams.map((p, i) => {
+                        const title = p === ALT ? ALT_TITLE : this._paramDesc.get(p) || p;
                         this._valueFields.push(fieldOf(d, p));
-                        this._valueTitles.push(`${fmtDate(d)} ${this._paramDesc.get(p) || p}`);
+                        this._valueTitles.push(`${d === TOT ? "Toplam" : fmtDate(d)} ${title}`);
                         return {
-                            title: this._paramDesc.get(p) || p, headerTooltip: p, headerWordWrap: true, field: fieldOf(d, p), width: 112,
+                            title, headerTooltip: p === ALT ? "En alt bileşenlerin toplamı" : p, headerWordWrap: true, field: fieldOf(d, p), width: 112,
                             hozAlign: "right", formatter: numFormatter, accessorClipboard: numCopy, cssClass: i === 0 ? "pstart" : ""
                         };
                     })
@@ -1359,8 +1413,8 @@
 
             this._table = new window.Tabulator(this._tableEl, {
                 index: "key",
-                data: [this._totalRow(), this._leafRow()].concat(rows),
-                frozenRows: 2,
+                data: [this._totalRow()].concat(rows),
+                frozenRows: 1,
                 height: "100%",
                 rowHeight: 26,
                 layout: "fitData",
@@ -1383,8 +1437,7 @@
                     row.getElement().classList.toggle("leaf", !(Array.isArray(d._children) && d._children.length));
                     if (k === "A") row.getElement().classList.add("row-activity");
                     if (k === "P") row.getElement().classList.add("row-placeholder");
-                    if (k === "T" || k === "L") row.getElement().classList.add("row-total");
-                    if (k === "L") row.getElement().classList.add("row-leaf");
+                    if (k === "T") row.getElement().classList.add("row-total");
                 }
             });
             this._table.on("tableBuilt", () => this._loadVisible());
@@ -1462,6 +1515,7 @@
                 const updates = new Map(ids.map(id => [id, Object.assign({ key: `M${id}`, desc: this._desc.ZMALZEME.get(id) || "" }, empty, this._attrOf("ZMALZEME", id))]));
                 if (vals) vals.forEach(r => { if (updates.has(r.ZMALZEME)) addValue(updates.get(r.ZMALZEME), r); });
                 else updates.forEach((u, id) => Object.assign(u, bulk.get(id) || {}));
+                updates.forEach((u, id) => this._addTotals(Object.assign(u, this._altFor("M", id))));
                 updates.forEach((u, id) => this._valCache.set(id, u));
                 const visible = Array.from(updates.values()).filter(u => this._table.getRow(u.key));
                 if (visible.length) await this._table.updateData(visible);
@@ -1487,8 +1541,11 @@
                 const scale = d._kind === "B" ? this._scaleOf(d, d._id) : null;
                 const { compIds, actIds } = this._childIds({ comps, acts }, d._free);
                 const children = [];
-                compIds.forEach(id => children.push(Object.assign(this._row(`${d.key}/B${id}`, "B", id, "ZBILESEN", this._parentSet.has(id)), this._scaled(comps.get(id), scale), { _free: this._isFree(d._free, id) })));
-                actIds.forEach(id => children.push(Object.assign(this._row(`${d.key}/A${id}`, "A", id, "ZMASRAF_OGESI", false), this._scaled(acts.get(id), scale))));
+                compIds.forEach(id => {
+                    const vals = this._scaled(comps.get(id), scale);
+                    children.push(this._addTotals(Object.assign(this._row(`${d.key}/B${id}`, "B", id, "ZBILESEN", this._parentSet.has(id)), vals, this._altFor("B", id, vals), { _free: this._isFree(d._free, id) })));
+                });
+                actIds.forEach(id => children.push(this._addTotals(Object.assign(this._row(`${d.key}/A${id}`, "A", id, "ZMASRAF_OGESI", false), this._scaled(acts.get(id), scale)))));
                 await row.update({ _children: children.length ? children : null, _loaded: true, _busy: false });
 
                 await Promise.all([
