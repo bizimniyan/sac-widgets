@@ -8,6 +8,7 @@
     const TYPE_LABEL = { M: "Malzeme", B: "Bileşen", A: "Aktivite" };
     const USE_PARAM = "USM0013";
     const PROD_PARAM = "USM0015";
+    const CONS_PARAM = "USM0004";
     const EXPORT_ROWS = 200000;
     const XLSX_MAX_ROWS = 1048575;
     const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -466,10 +467,11 @@
 
         _scaleOf(used, id) {
             const own = (this._matVals && this._matVals.get(id)) || {};
+            const cons = (this._cons && this._cons.get(id)) || {};
             const f = {};
             this._dates.forEach(d => {
                 const u = used[fieldOf(d, USE_PARAM)];
-                const p = own[fieldOf(d, PROD_PARAM)];
+                const p = own[fieldOf(d, PROD_PARAM)] || cons[d];
                 f[d] = !u ? 0 : p ? u / p : 1;
             });
             return f;
@@ -550,7 +552,7 @@
                 step("Excel: veri yükleniyor…");
                 const [tree] = await Promise.all([
                     this._loadAllChildren(token, (i, n) => step(`Excel: veri ${i}/${n}`)),
-                    Promise.all([this._attrPromise, this._matValsPromise])
+                    Promise.all([this._attrPromise, this._matValsPromise, this._consPromise])
                         .then(() => this._attrsReady ? null : this._loadMasterRanges("ZMALZEME", this._allIds, token)),
                     this._actPromise,
                     this._loadMasterRanges("ZBILESEN", Array.from(this._compSet).filter(id => !this._desc.ZBILESEN.has(id)).sort(cmpCode), token)
@@ -705,6 +707,7 @@
             this._matValsError = null;
             this._usedSet = null;
             this._parentsPromise = null;
+            this._cons = null;
 
             this._pid = (this.providerId || "").trim();
             this._params = splitList(this.parameters);
@@ -715,8 +718,8 @@
                 this._setStatus("Builder panelinden model, versiyon ve parametreleri girin.");
                 return;
             }
-            this._baseFilter = `Version eq '${q(version)}' and ${orEq("ZPARAMETRE", this._params)}` +
-                (companies.length ? ` and ${orEq("ZSIRKET_KODU", companies)}` : "");
+            this._scopeFilter = `Version eq '${q(version)}'` + (companies.length ? ` and ${orEq("ZSIRKET_KODU", companies)}` : "");
+            this._baseFilter = `${this._scopeFilter} and ${orEq("ZPARAMETRE", this._params)}`;
             this._setStatus("Malzeme listesi yükleniyor…");
 
             try {
@@ -749,6 +752,7 @@
                 this._ids = this._filteredIds();
                 this._buildTable(dates, this._ids.map((id, pos) => this._mRow(id, pos)));
                 this._matValsPromise = this._loadMaterialValues(token);
+                this._consPromise = this._loadConsumption(token);
                 this._actPromise = this._loadAllActivityDescriptions();
                 this._attrPromise = this._loadParentAttrs(token);
                 if (this._compMatch) this._refreshUsed();
@@ -851,6 +855,21 @@
             const row = { key: "TOTAL", name: "Toplam", type: "", g1: "", g2: "", desc: this._matValsError || null, _kind: "T" };
             this._valueFields.forEach(f => { row[f] = null; });
             return Object.assign(row, this._computeTotal() || {});
+        }
+
+        async _loadConsumption(token) {
+            const cons = new Map();
+            try {
+                const rows = await this._get("FactDataAggregation", { $select: "ZMALZEME,Date,ZMIKTAR", $filter: `${this._scopeFilter} and ZPARAMETRE eq '${CONS_PARAM}'` });
+                rows.forEach(r => {
+                    if (!r.ZMIKTAR) return;
+                    if (!cons.has(r.ZMALZEME)) cons.set(r.ZMALZEME, {});
+                    cons.get(r.ZMALZEME)[r.Date] = r.ZMIKTAR;
+                });
+            } catch (e) {
+                return;
+            }
+            if (token === this._token) this._cons = cons;
         }
 
         async _loadMaterialValues(token) {
@@ -1409,7 +1428,7 @@
             const token = this._token;
             try {
                 const { comps, acts } = await this._childData(d._id);
-                if (d._kind === "B" && !this._matVals) await this._matValsPromise;
+                if (d._kind === "B" && (!this._matVals || !this._cons)) await Promise.all([this._matValsPromise, this._consPromise]);
                 if (token !== this._token) return;
                 const scale = d._kind === "B" ? this._scaleOf(d, d._id) : null;
                 const { compIds, actIds } = this._childIds({ comps, acts }, d._free);
