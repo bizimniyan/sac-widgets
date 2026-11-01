@@ -6,20 +6,20 @@
     "vendor": "Custom",
     "license": "",
     "id": "com.custom.usmtree",
-    "version": "1.8.0",
+    "version": "1.9.0",
     "icon": "",
     "webcomponents": [
         {
             "kind": "main",
             "tag": "custom-usm-tree",
-            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree.js?v=180",
+            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree.js?v=190",
             "integrity": "",
             "ignoreIntegrity": true
         },
         {
             "kind": "builder",
             "tag": "custom-usm-tree-builder",
-            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree_builder.js?v=180",
+            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree_builder.js?v=190",
             "integrity": "",
             "ignoreIntegrity": true
         }
@@ -46,6 +46,10 @@
             "default": ""
         },
         "materialFilter": {
+            "type": "string",
+            "default": ""
+        },
+        "componentFilter": {
             "type": "string",
             "default": ""
         },
@@ -105,6 +109,21 @@
         },
         "getMaterialFilter": {
             "description": "Gecerli malzeme filtresini dondurur",
+            "parameters": [],
+            "returnType": "string"
+        },
+        "setComponentFilter": {
+            "description": "Bilesen filtresi: agac acilinca sadece bu bilesenler gorunur (aktiviteler gizlenir); 11*, 11008335, aralik; ; ile coklu",
+            "parameters": [
+                {
+                    "name": "filter",
+                    "type": "string",
+                    "description": "Filtre metni, bos = filtre yok"
+                }
+            ]
+        },
+        "getComponentFilter": {
+            "description": "Gecerli bilesen filtresini dondurur",
             "parameters": [],
             "returnType": "string"
         },

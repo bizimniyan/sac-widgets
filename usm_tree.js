@@ -297,12 +297,12 @@
             <div class="bar"><div id="status">Yükleniyor…</div><button id="xls">Excel'e aktar</button></div>
             <div id="table"></div>
             <div id="pop" class="pop" hidden>
-                <div class="pop-h">Malzeme seçimi <button class="x" id="popClose" title="Kapat">×</button></div>
+                <div class="pop-h"><span id="popTitle">Malzeme seçimi</span><button class="x" id="popClose" title="Kapat">×</button></div>
                 <div class="pop-b">
                     <div class="pop-sec">Seçimler <small>(tek kod, 2* veya alt – üst aralık)</small></div>
                     <div id="selRows" class="sel-rows"></div>
                     <button id="addRow" class="link">+ satır</button>
-                    <div class="pop-sec">Malzeme ara <small>(kod veya tanım; işaretle = seçimlere ekle)</small></div>
+                    <div class="pop-sec"><span id="popSearchLbl">Malzeme ara</span> <small>(kod veya tanım; işaretle = seçimlere ekle)</small></div>
                     <input id="search" type="text" placeholder="örn. 2100253 veya DAVLUMBAZ">
                     <div id="hits" class="hits"></div>
                     <div id="hitInfo" class="hit-info"></div>
@@ -342,6 +342,10 @@
             this._matFilter = "";
             this._types = new Set(["M", "Y"]);
             this._compSet = new Set();
+            this._compIds = [];
+            this._compIndex = new Map();
+            this._compFilter = "";
+            this._compMatch = null;
             this._allIds = [];
             this._ids = [];
             this._desc = { ZMALZEME: new Map(), ZBILESEN: new Map(), ZMASRAF_OGESI: new Map() };
@@ -351,6 +355,7 @@
             this._buildKodHeader();
             this._buildGroupHeader(1, "Grup 1");
             this._buildGroupHeader(2, "Grup 2");
+            this._buildDescHeader();
             this._initPopup();
             this._initGroupPopup();
         }
@@ -380,13 +385,14 @@
                 this._matFilter = this.materialFilter || "";
                 this._kodInput.value = this._matFilter;
             }
+            if ("componentFilter" in changedProperties) this._setCompFilter(this.componentFilter || "", true);
             if ("materialType" in changedProperties || "onlyParents" in changedProperties) {
                 this._types = parseTypes(this.materialType) || new Set(this.onlyParents === false ? TYPE_KEYS : ["M", "Y"]);
                 this._updateTypeButton();
             }
             if (["providerId", "version", "parameters", "pageSize", "onlyParents", "companyCode", "materialType"].some(k => k in changedProperties)) {
                 this._scheduleReload();
-            } else if ("materialFilter" in changedProperties) {
+            } else if ("materialFilter" in changedProperties || "componentFilter" in changedProperties) {
                 this._applyFilter();
             }
         }
@@ -424,6 +430,32 @@
 
         getMaterialFilter() {
             return this._matFilter;
+        }
+
+        setComponentFilter(filter) {
+            this._setCompFilter(filter);
+        }
+
+        getComponentFilter() {
+            return this._compFilter;
+        }
+
+        _setCompFilter(text, silent) {
+            this._compFilter = splitList(text).join("; ");
+            this._compMatch = matcher(this._compFilter);
+            const btn = this._compBtn;
+            const n = splitList(this._compFilter).length;
+            btn.textContent = "Bileşen: " + (!n ? "Tümü" : n === 1 ? this._compFilter : `${n} seçim`) + " ▾";
+            btn.title = this._compFilter;
+            btn.classList.toggle("on", n > 0);
+            if (!silent) this._applyFilter();
+        }
+
+        _visibleChildren(c) {
+            const m = this._compMatch;
+            const compIds = c.compIds || Array.from(c.comps.keys()).sort();
+            const actIds = c.actIds || Array.from(c.acts.keys()).sort();
+            return m ? { compIds: compIds.filter(m), actIds: [] } : { compIds, actIds };
         }
 
         refresh() {
@@ -527,7 +559,7 @@
             const memo = new Map();
             const sub = (id, path) => {
                 if (memo.has(id)) return memo.get(id);
-                const c = tree.get(id);
+                const c = tree.has(id) ? this._visibleChildren(tree.get(id)) : null;
                 let n = c ? c.actIds.length : 0;
                 if (c) c.compIds.forEach(k => {
                     n++;
@@ -550,19 +582,20 @@
             const walk = function* (pid, top, lvl, path) {
                 const c = tree.get(pid);
                 if (!c) return;
-                for (const id of c.compIds) {
+                const v = this._visibleChildren(c);
+                for (const id of v.compIds) {
                     yield line(lvl, top, pid, id, "B", c.comps.get(id));
                     if (tree.has(id) && !path.has(id)) {
                         path.add(id);
-                        yield* walk(id, top, lvl + 1, path);
+                        yield* walk.call(this, id, top, lvl + 1, path);
                         path.delete(id);
                     }
                 }
-                for (const id of c.actIds) yield line(lvl, top, pid, id, "A", c.acts.get(id));
+                for (const id of v.actIds) yield line(lvl, top, pid, id, "A", c.acts.get(id));
             };
             for (const id of ids) {
                 yield line(1, id, "", id, "M", this._matVals.get(id));
-                yield* walk(id, id, 2, new Set([id]));
+                yield* walk.call(this, id, id, 2, new Set([id]));
             }
         }
 
@@ -636,6 +669,8 @@
                 this._allIndex = new Map(this._allIds.map((id, i) => [id, i]));
                 this._parentSet = new Set(parentRows ? parentRows.map(r => r.ZMALZEME) : this._allIds);
                 this._compSet = new Set(compRows.map(r => r.ZBILESEN));
+                this._compIds = Array.from(this._compSet).filter(id => id && id !== NONE).sort(cmpCode);
+                this._compIndex = new Map(this._compIds.map((id, i) => [id, i]));
                 this._ids = this._filteredIds();
                 this._buildTable(dates, this._ids.map((id, pos) => this._mRow(id, pos)));
                 this._matValsPromise = this._loadMaterialValues(token);
@@ -873,8 +908,19 @@
                 if (e.key === "Escape") { this._kodInput.value = this._matFilter; this._kodInput.blur(); }
             });
             this._kodInput.addEventListener("change", () => this._setFilter(this._kodInput.value));
-            box.querySelector("button:not(.tbtn)").addEventListener("click", () => this._openPopup());
+            box.querySelector("button:not(.tbtn)").addEventListener("click", () => this._openPopup("ZMALZEME"));
             this._kodHeaderEl = el;
+        }
+
+        _buildDescHeader() {
+            const el = document.createElement("div");
+            el.innerHTML = `<div>Açıklama</div><div class="kod-f"><button class="gbtn"></button></div>`;
+            const box = el.querySelector(".kod-f");
+            this._compBtn = box.querySelector("button");
+            stopEvents(box);
+            this._compBtn.addEventListener("click", () => this._openPopup("ZBILESEN", this._compBtn));
+            this._descHeaderEl = el;
+            this._setCompFilter("", true);
         }
 
         _buildGroupHeader(level, title) {
@@ -991,7 +1037,9 @@
             $("popOk").addEventListener("click", () => {
                 this._readSelRows();
                 this._closePopup();
-                this._setFilter(this._sel.filter(s => s.low).map(tokenText).join("; "));
+                const text = this._sel.filter(s => s.low).map(tokenText).join("; ");
+                if (this._popDim === "ZBILESEN") this._setCompFilter(text);
+                else this._setFilter(text);
             });
             $("addRow").addEventListener("click", () => {
                 this._readSelRows();
@@ -1017,10 +1065,17 @@
             this._pop.addEventListener("keydown", (e) => { if (e.key === "Escape") this._closePopup(); });
         }
 
-        _openPopup() {
+        _openPopup(dim, btn) {
+            const comp = dim === "ZBILESEN";
+            this._popDim = dim;
             this._gpop.hidden = true;
             this._kodInput.value = this._matFilter;
-            this._sel = splitList(this._matFilter).map(parseToken);
+            this._root.getElementById("popTitle").textContent = comp ? "Bileşen seçimi" : "Malzeme seçimi";
+            this._root.getElementById("popSearchLbl").textContent = comp ? "Bileşen ara" : "Malzeme ara";
+            this._searchEl.placeholder = comp ? "örn. 11008335 veya RULMAN" : "örn. 2100253 veya DAVLUMBAZ";
+            const wrap = this._root.querySelector(".wrap").getBoundingClientRect();
+            this._pop.style.left = btn ? Math.max(8, Math.min(btn.getBoundingClientRect().left - wrap.left, wrap.width - 468)) + "px" : "";
+            this._sel = splitList(comp ? this._compFilter : this._matFilter).map(parseToken);
             if (!this._sel.length) this._sel.push({ low: "", high: "" });
             this._renderSelRows();
             this._searchEl.value = "";
@@ -1063,7 +1118,10 @@
         async _search() {
             const token = this._searchToken = (this._searchToken || 0) + 1;
             const term = this._searchEl.value.trim();
-            const all = this._allIds;
+            const dim = this._popDim;
+            const noun = dim === "ZBILESEN" ? "bileşen" : "malzeme";
+            const all = dim === "ZBILESEN" ? this._compIds : this._allIds;
+            const index = dim === "ZBILESEN" ? this._compIndex : this._allIndex;
             let hits;
             let more = false;
             this._hitInfoEl.textContent = "aranıyor…";
@@ -1079,27 +1137,27 @@
                         const lower = term.toLocaleLowerCase("tr-TR");
                         const variants = Array.from(new Set([term, term.toLocaleUpperCase("tr-TR"), term.toUpperCase(), lower,
                             lower.charAt(0).toLocaleUpperCase("tr-TR") + lower.slice(1)]));
-                        const rows = await this._get("ZMALZEMEMaster", {
+                        const rows = await this._get(`${dim}Master`, {
                             $select: "ID,Description",
                             $filter: variants.map(v => `contains(Description,'${q(v)}')`).join(" or "),
                             $top: 5000
                         });
                         if (token !== this._searchToken) return;
                         rows.forEach(r => {
-                            this._desc.ZMALZEME.set(r.ID, r.Description || "");
-                            if (this._allIndex.has(r.ID) && found.size < MAX_HITS) found.add(r.ID);
+                            this._desc[dim].set(r.ID, r.Description || "");
+                            if (index.has(r.ID) && found.size < MAX_HITS) found.add(r.ID);
                         });
                     }
-                    hits = Array.from(found).sort((a, b) => this._allIndex.get(a) - this._allIndex.get(b));
+                    hits = Array.from(found).sort((a, b) => index.get(a) - index.get(b));
                     more = codeHits.length > MAX_HITS || hits.length >= MAX_HITS;
                 }
-                await this._loadDescriptions("ZMALZEME", hits);
+                await this._loadDescriptions(dim, hits);
                 if (token !== this._searchToken) return;
                 this._hits = hits;
                 this._renderHits();
                 this._hitInfoEl.textContent = hits.length
-                    ? `${hits.length} malzeme${more ? ` (ilk ${MAX_HITS} gösteriliyor, aramayı daraltın)` : ""}`
-                    : "Eşleşen malzeme yok.";
+                    ? `${hits.length} ${noun}${more ? ` (ilk ${MAX_HITS} gösteriliyor, aramayı daraltın)` : ""}`
+                    : `Eşleşen ${noun} yok.`;
             } catch (e) {
                 if (token === this._searchToken && !(e && e.name === "AbortError")) this._hitInfoEl.textContent = "Arama hatası: " + errText(e);
             }
@@ -1117,7 +1175,7 @@
                 cb.value = id;
                 cb.checked = singles.has(id);
                 label.querySelector("b").textContent = id;
-                label.querySelector("span").textContent = this._desc.ZMALZEME.get(id) || "";
+                label.querySelector("span").textContent = this._desc[this._popDim].get(id) || "";
                 frag.appendChild(label);
             });
             this._hitsEl.appendChild(frag);
@@ -1127,7 +1185,7 @@
             this._destroyTable();
             const columns = [
                 { title: "Kod", field: "name", width: 260, frozen: true, titleFormatter: () => this._kodHeaderEl },
-                { title: "Açıklama", field: "desc", width: 260, frozen: true, formatter: descFormatter },
+                { title: "Açıklama", field: "desc", width: 260, frozen: true, formatter: descFormatter, titleFormatter: () => this._descHeaderEl },
                 { title: "Grup 1", field: "g1", width: 120, cssClass: "soft", titleFormatter: () => this._gHeader[1].el },
                 { title: "Grup 2", field: "g2", width: 170, cssClass: "soft", titleFormatter: () => this._gHeader[2].el },
                 { title: "Tür", field: "type", width: 75, cssClass: "soft" }
@@ -1274,8 +1332,7 @@
             try {
                 const { comps, acts } = await this._childData(d._id);
                 if (token !== this._token) return;
-                const compIds = Array.from(comps.keys()).sort();
-                const actIds = Array.from(acts.keys()).sort();
+                const { compIds, actIds } = this._visibleChildren({ comps, acts });
                 const children = [];
                 compIds.forEach(id => children.push(Object.assign(this._row(`${d.key}/B${id}`, "B", id, "ZBILESEN", this._parentSet.has(id)), comps.get(id))));
                 actIds.forEach(id => children.push(Object.assign(this._row(`${d.key}/A${id}`, "A", id, "ZMASRAF_OGESI", false), acts.get(id))));
