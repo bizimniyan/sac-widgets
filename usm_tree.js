@@ -303,7 +303,7 @@
             .gpop .hits span { flex: 0 0 auto; color: #888; }
         </style>
         <div class="wrap">
-            <div class="bar"><div id="status">Yükleniyor…</div><button id="xls">Excel'e aktar</button></div>
+            <div class="bar"><button id="xls">Excel'e aktar</button><div id="status">Yükleniyor…</div></div>
             <div id="table"></div>
             <div id="pop" class="pop" hidden>
                 <div class="pop-h"><span id="popTitle">Malzeme seçimi</span><button class="x" id="popClose" title="Kapat">×</button></div>

@@ -175,9 +175,10 @@
             .wrap { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; font-family: "72", Arial, sans-serif; }
             .bar { flex: 0 0 auto; display: flex; align-items: center; }
             #status { flex: 1 1 auto; font-size: 11px; color: #9a9a9a; padding: 4px 6px; }
-            #mSelWrap { flex: 0 0 auto; font-size: 11px; color: #444; padding: 2px 6px; }
+            #mSelWrap { flex: 0 0 auto; display: flex; }
             #mSelWrap[hidden] { display: none; }
-            #mSel { font: 11px Arial, sans-serif; padding: 1px 2px; border: 1px solid #ff0000; background: #ffe8e8; border-radius: 3px; color: #333; }
+            #mSel { margin: 2px 0 2px 6px; font: 11px Arial, sans-serif; padding: 1px 2px; border: 1px solid #dadada; background: #fff; border-radius: 3px; color: #444; }
+            #mSel:focus { outline: 1px solid #ff0000; outline-offset: 0; border-color: #ff0000; }
             #xls { flex: 0 0 auto; margin: 2px 6px; padding: 1px 8px; font: 11px Arial, sans-serif; cursor: pointer; border: 1px solid #dadada; background: #fff; border-radius: 3px; color: #444; }
             #xls:hover:not(:disabled) { background: #ffe8e8; }
             #xls:disabled { color: #999; cursor: default; }
@@ -248,7 +249,7 @@
             .pop-f .primary:hover { background: #ff3333; }
         </style>
         <div class="wrap">
-            <div class="bar"><button id="xls">Excel'e aktar</button><label id="mSelWrap" hidden>Measure: <select id="mSel"></select></label><div id="status">Yükleniyor…</div></div>
+            <div class="bar"><label id="mSelWrap" hidden><select id="mSel" title="Measure"></select></label><button id="xls">Excel'e aktar</button><div id="status">Yükleniyor…</div></div>
             <div id="table"></div>
             <div id="pop" class="pop" hidden>
                 <div class="pop-h"><span id="popTitle"></span><button class="x" id="popClose" title="Kapat">×</button></div>

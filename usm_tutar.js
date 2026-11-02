@@ -228,7 +228,7 @@
             .bar { flex: 0 0 auto; display: flex; align-items: center; }
             #status { flex: 1 1 auto; font-size: 11px; color: #9a9a9a; padding: 4px 6px; }
             #status.error { color: #bb0000; white-space: pre-wrap; }
-            .bbtn, #meas { flex: 0 0 auto; margin: 2px 6px 2px 0; padding: 1px 8px; font: 11px Arial, sans-serif; border: 1px solid #dadada; background: #fff; border-radius: 3px; color: #444; }
+            .bbtn, #meas { flex: 0 0 auto; margin: 2px 0 2px 6px; padding: 1px 8px; font: 11px Arial, sans-serif; border: 1px solid #dadada; background: #fff; border-radius: 3px; color: #444; }
             .bbtn { cursor: pointer; }
             .bbtn:hover:not(:disabled) { background: #ffe8e8; }
             .bbtn:disabled { color: #999; cursor: default; }
@@ -320,7 +320,7 @@
             .gpop .hits span { flex: 0 0 auto; color: #888; }
         </style>
         <div class="wrap">
-            <div class="bar"><div id="status">Yükleniyor…</div><select id="meas" title="Measure"></select><button id="xls" class="bbtn">Excel'e aktar</button></div>
+            <div class="bar"><select id="meas" title="Measure"></select><button id="xls" class="bbtn">Excel'e aktar</button><div id="status">Yükleniyor…</div></div>
             <div id="table"></div>
             <div id="pop" class="pop" hidden>
                 <div class="pop-h"><span id="popTitle">Malzeme seçimi</span><button class="x" id="popClose" title="Kapat">×</button></div>

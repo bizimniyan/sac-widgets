@@ -6,20 +6,20 @@
     "vendor": "Custom",
     "license": "",
     "id": "com.custom.sacpivot",
-    "version": "1.9.0",
+    "version": "1.9.1",
     "icon": "",
     "webcomponents": [
         {
             "kind": "main",
             "tag": "custom-sac-pivot",
-            "url": "https://bizimniyan.github.io/sac-widgets/sac_pivot.js?v=190",
+            "url": "https://bizimniyan.github.io/sac-widgets/sac_pivot.js?v=191",
             "integrity": "",
             "ignoreIntegrity": true
         },
         {
             "kind": "builder",
             "tag": "custom-sac-pivot-builder",
-            "url": "https://bizimniyan.github.io/sac-widgets/sac_pivot_builder.js?v=190",
+            "url": "https://bizimniyan.github.io/sac-widgets/sac_pivot_builder.js?v=191",
             "integrity": "",
             "ignoreIntegrity": true
         }
