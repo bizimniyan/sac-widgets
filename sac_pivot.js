@@ -7,7 +7,7 @@
     const DIM_LABEL = { Date: "Dönem", Version: "Versiyon" };
     const DESC_ONLY = new Set(["ZPARAMETRE"]);
     const SCRIPT_ONLY = [["Version", "setVersion"], ["ZSIRKET_KODU", "setCompanyCode"]];
-    const TUTAR_MEASURES = [["ZTUTAR", "Tutar"], ["ZTUTAR_EUR", "Tutar EUR"], ["ZTUTAR_USD", "Tutar USD"]];
+    const TUTAR_MEASURES = ["ZTUTAR", "ZTUTAR_EUR", "ZTUTAR_USD"];
     const SEP = "\u0001";
     const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
@@ -244,7 +244,7 @@
             .pop-f .primary:hover { background: #ff3333; }
         </style>
         <div class="wrap">
-            <div class="bar"><label id="mSelWrap" hidden>Tutar: <select id="mSel"></select></label><div id="status">Yükleniyor…</div><button id="xls">Excel'e aktar</button></div>
+            <div class="bar"><label id="mSelWrap" hidden>Measure: <select id="mSel"></select></label><div id="status">Yükleniyor…</div><button id="xls">Excel'e aktar</button></div>
             <div id="table"></div>
             <div id="pop" class="pop" hidden>
                 <div class="pop-h"><span id="popTitle"></span><button class="x" id="popClose" title="Kapat">×</button></div>
@@ -277,8 +277,8 @@
             this._xlsBtn.addEventListener("click", () => this.exportExcel());
             this._mSelWrap = shadowRoot.getElementById("mSelWrap");
             this._mSel = shadowRoot.getElementById("mSel");
-            TUTAR_MEASURES.forEach(([id, label]) => this._mSel.add(new Option(label, id)));
-            this._tutar = TUTAR_MEASURES[0][0];
+            TUTAR_MEASURES.forEach(id => this._mSel.add(new Option(id, id)));
+            this._tutar = TUTAR_MEASURES[0];
             this._mSel.addEventListener("change", () => this.setMeasureSelection(this._mSel.value));
             this._table = null;
             this._token = 0;
@@ -319,7 +319,7 @@
 
         setMeasureSelection(measure) {
             const id = String(measure || "").trim().toUpperCase();
-            if (!TUTAR_MEASURES.some(x => x[0] === id)) return;
+            if (TUTAR_MEASURES.indexOf(id) < 0) return;
             this._tutar = id;
             this._mSel.value = id;
             this._scheduleReload();
@@ -372,8 +372,7 @@
             const tutarOn = !!String(this.measureSelect || "").trim();
             this._mSelWrap.hidden = !tutarOn;
             if (tutarOn && !measures.some(m => m.id === this._tutar)) {
-                const t = TUTAR_MEASURES.find(x => x[0] === this._tutar);
-                measures.push({ id: t[0], base: t[0], attr: "", label: t[1] });
+                measures.push({ id: this._tutar, base: this._tutar, attr: "", label: this._tutar });
             }
             const filters = parseFilters(this.filters);
             SCRIPT_ONLY.forEach(([d]) => filters.delete(d));
