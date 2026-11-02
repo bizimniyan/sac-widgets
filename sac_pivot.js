@@ -112,12 +112,13 @@
     };
     const parseFilters = (text) => {
         const out = new Map();
+        let dim = "";
         String(text || "").split(/[;\n]/).forEach(part => {
             const i = part.indexOf("=");
-            if (i <= 0) return;
-            const dim = part.slice(0, i).trim();
+            if (i > 0) dim = part.slice(0, i).trim();
+            if (!dim) return;
             const vals = part.slice(i + 1).split(",").map(v => normVal(dim, v)).filter(Boolean);
-            if (dim && vals.length) out.set(dim, vals);
+            if (vals.length) out.set(dim, (out.get(dim) || []).concat(vals));
         });
         return out;
     };
@@ -642,22 +643,37 @@
                     width: 105, hozAlign: "right", formatter: numFormatter, accessorClipboard: numCopy
                 };
             };
-            const build = (list, level) => {
-                if (level === nc) return ms.map((m, mi) => this._vUsed.has(`v${list[0].ci}_${mi}`) ? leaf(list[0], mi, m.label) : null).filter(Boolean);
+            const used = this._vUsed;
+            const slots = colIds.map((_, i) => i);
+            if (ms.length > 1) slots.splice(colIds.indexOf("Date") >= 0 ? colIds.indexOf("Date") : nc, 0, "M");
+            const build = (list, si, mi) => {
+                const slot = slots[si];
+                const last = si === slots.length - 1;
+                if (slot === "M") {
+                    return ms.map((m, k) => {
+                        const sub = list.filter(c => used.has(`v${c.ci}_${k}`));
+                        if (!sub.length) return null;
+                        return last ? leaf(sub[0], k, m.label) : { title: m.label, headerTooltip: m.id, cssClass: "pgroup", columns: build(sub, si + 1, k) };
+                    }).filter(Boolean);
+                }
                 const groups = [];
                 list.forEach(c => {
                     const g = groups[groups.length - 1];
-                    if (g && g.v === c.vals[level]) g.list.push(c);
-                    else groups.push({ v: c.vals[level], list: [c] });
+                    if (g && g.v === c.vals[slot]) g.list.push(c);
+                    else groups.push({ v: c.vals[slot], list: [c] });
                 });
                 return groups.map(g => {
-                    const title = this._label(colIds[level], g.v);
-                    if (level === nc - 1 && ms.length === 1) return leaf(g.list[0], 0, title);
-                    const kids = build(g.list, level + 1);
+                    const title = this._label(colIds[slot], g.v);
+                    if (last) {
+                        const k = mi === undefined ? 0 : mi;
+                        return used.has(`v${g.list[0].ci}_${k}`) ? leaf(g.list[0], k, title) : null;
+                    }
+                    const kids = build(g.list, si + 1, mi);
                     return kids.length ? { title, headerTooltip: g.v, cssClass: "pgroup", columns: kids } : null;
                 }).filter(Boolean);
             };
-            const defs = this._cols.length ? build(this._cols, 0) : [];
+            const defs = !this._cols.length ? [] : slots.length ? build(this._cols, 0)
+                : used.has(`v${this._cols[0].ci}_0`) ? [leaf(this._cols[0], 0, ms[0].label)] : [];
             if (nc && defs.length && this._totCols.length) {
                 const byParam = this._totCols[0].param !== undefined;
                 const tot = this._totCols.map(t => {

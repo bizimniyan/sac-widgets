@@ -6,20 +6,20 @@
     "vendor": "Custom",
     "license": "",
     "id": "com.custom.sacpivot",
-    "version": "1.5.1",
+    "version": "1.6.0",
     "icon": "",
     "webcomponents": [
         {
             "kind": "main",
             "tag": "custom-sac-pivot",
-            "url": "https://bizimniyan.github.io/sac-widgets/sac_pivot.js?v=151",
+            "url": "https://bizimniyan.github.io/sac-widgets/sac_pivot.js?v=160",
             "integrity": "",
             "ignoreIntegrity": true
         },
         {
             "kind": "builder",
             "tag": "custom-sac-pivot-builder",
-            "url": "https://bizimniyan.github.io/sac-widgets/sac_pivot_builder.js?v=151",
+            "url": "https://bizimniyan.github.io/sac-widgets/sac_pivot_builder.js?v=160",
             "integrity": "",
             "ignoreIntegrity": true
         }
@@ -30,9 +30,9 @@
         "providerId": { "type": "string", "default": "Cgo60cs80hp2214495dtio17t3c" },
         "rowDims": { "type": "string", "default": "ZMALZEME:Malzeme, ZTEDARIKCI:Tedarikçi, ZCURRENCY:Para Birimi" },
         "colDims": { "type": "string", "default": "ZPARAMETRE:Parametre, Date" },
-        "filters": { "type": "string", "default": "ZPARAMETRE=USM0010,USM0011" },
-        "measures": { "type": "string", "default": "ZFIYAT:Fiyat" },
-        "measureSelect": { "type": "string", "default": "" }
+        "filters": { "type": "string", "default": "ZPARAMETRE=USM0016,USM0017,USM0018,USM0003_T" },
+        "measures": { "type": "string", "default": "ZMIKTAR:Miktar" },
+        "measureSelect": { "type": "string", "default": "x" }
     },
     "methods": {
         "setVersion": {
