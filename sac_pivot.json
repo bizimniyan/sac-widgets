@@ -6,20 +6,20 @@
     "vendor": "Custom",
     "license": "",
     "id": "com.custom.sacpivot",
-    "version": "1.3.0",
+    "version": "1.4.0",
     "icon": "",
     "webcomponents": [
         {
             "kind": "main",
             "tag": "custom-sac-pivot",
-            "url": "https://bizimniyan.github.io/sac-widgets/sac_pivot.js?v=130",
+            "url": "https://bizimniyan.github.io/sac-widgets/sac_pivot.js?v=140",
             "integrity": "",
             "ignoreIntegrity": true
         },
         {
             "kind": "builder",
             "tag": "custom-sac-pivot-builder",
-            "url": "https://bizimniyan.github.io/sac-widgets/sac_pivot_builder.js?v=130",
+            "url": "https://bizimniyan.github.io/sac-widgets/sac_pivot_builder.js?v=140",
             "integrity": "",
             "ignoreIntegrity": true
         }
@@ -31,7 +31,8 @@
         "rowDims": { "type": "string", "default": "ZMALZEME:Malzeme, ZTEDARIKCI:Tedarikçi, ZCURRENCY:Para Birimi" },
         "colDims": { "type": "string", "default": "ZPARAMETRE:Parametre, Date" },
         "filters": { "type": "string", "default": "ZPARAMETRE=USM0010,USM0011" },
-        "measures": { "type": "string", "default": "ZFIYAT:Fiyat" }
+        "measures": { "type": "string", "default": "ZFIYAT:Fiyat" },
+        "measureSelect": { "type": "string", "default": "" }
     },
     "methods": {
         "setVersion": {
@@ -52,6 +53,17 @@
                 { "name": "dimension", "type": "string", "description": "Boyut ID, orn. Version, ZSIRKET_KODU" },
                 { "name": "values", "type": "string", "description": "Degerler virgulle, orn. 1100,1200" }
             ]
+        },
+        "setMeasureSelection": {
+            "description": "Measure secimli acikken gosterilecek tutar: ZTUTAR, ZTUTAR_EUR, ZTUTAR_USD",
+            "parameters": [
+                { "name": "measure", "type": "string", "description": "orn. ZTUTAR_EUR" }
+            ]
+        },
+        "getMeasureSelection": {
+            "description": "Secili tutar measure'i",
+            "parameters": [],
+            "returnType": "string"
         },
         "getFilter": {
             "description": "Boyutun gecerli sabit filtre degerleri (virgulle)",

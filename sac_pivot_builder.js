@@ -4,7 +4,8 @@
         { id: "rowDims", label: "Satırlar (virgülle; ID:Başlık; özellik BOYUT.ÖZELLİK)", hint: "ZMALZEME:Malzeme, ZMALZEME.MALZ_GRUP1:Grup 1", rows: 2 },
         { id: "colDims", label: "Sütunlar (virgülle; ID:Başlık, boş olabilir)", hint: "ZPARAMETRE:Parametre, Date", rows: 2 },
         { id: "filters", label: "Filtreler (BOYUT=değer,değer ; ile ayrılır; Version ve şirket kodu script ile)", hint: "ZPARAMETRE=USM0010,USM0011", rows: 4 },
-        { id: "measures", label: "Measure (virgülle; ID:Başlık)", hint: "ZFIYAT:Fiyat", rows: 1 }
+        { id: "measures", label: "Measure (virgülle; ID:Başlık)", hint: "ZFIYAT:Fiyat", rows: 1 },
+        { id: "measureSelect", label: "Measure seçimli (x = ekranda Tutar / EUR / USD seçimi)", hint: "x", rows: 1 }
     ];
 
     const template = document.createElement("template");

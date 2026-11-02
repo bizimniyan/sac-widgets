@@ -7,6 +7,7 @@
     const DIM_LABEL = { Date: "Dönem", Version: "Versiyon" };
     const DESC_ONLY = new Set(["ZPARAMETRE"]);
     const SCRIPT_ONLY = [["Version", "setVersion"], ["ZSIRKET_KODU", "setCompanyCode"]];
+    const TUTAR_MEASURES = [["ZTUTAR", "Tutar"], ["ZTUTAR_EUR", "Tutar EUR"], ["ZTUTAR_USD", "Tutar USD"]];
     const SEP = "\u0001";
     const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
@@ -170,6 +171,9 @@
             .wrap { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; font-family: "72", Arial, sans-serif; }
             .bar { flex: 0 0 auto; display: flex; align-items: center; }
             #status { flex: 1 1 auto; font-size: 11px; color: #9a9a9a; padding: 4px 6px; }
+            #mSelWrap { flex: 0 0 auto; font-size: 11px; color: #444; padding: 2px 6px; }
+            #mSelWrap[hidden] { display: none; }
+            #mSel { font: 11px Arial, sans-serif; padding: 1px 2px; border: 1px solid #ff0000; background: #ffe8e8; border-radius: 3px; color: #333; }
             #xls { flex: 0 0 auto; margin: 2px 6px; padding: 1px 8px; font: 11px Arial, sans-serif; cursor: pointer; border: 1px solid #dadada; background: #fff; border-radius: 3px; color: #444; }
             #xls:hover:not(:disabled) { background: #ffe8e8; }
             #xls:disabled { color: #999; cursor: default; }
@@ -240,7 +244,7 @@
             .pop-f .primary:hover { background: #ff3333; }
         </style>
         <div class="wrap">
-            <div class="bar"><div id="status">Yükleniyor…</div><button id="xls">Excel'e aktar</button></div>
+            <div class="bar"><label id="mSelWrap" hidden>Tutar: <select id="mSel"></select></label><div id="status">Yükleniyor…</div><button id="xls">Excel'e aktar</button></div>
             <div id="table"></div>
             <div id="pop" class="pop" hidden>
                 <div class="pop-h"><span id="popTitle"></span><button class="x" id="popClose" title="Kapat">×</button></div>
@@ -271,6 +275,11 @@
             this._tableEl = shadowRoot.getElementById("table");
             this._xlsBtn = shadowRoot.getElementById("xls");
             this._xlsBtn.addEventListener("click", () => this.exportExcel());
+            this._mSelWrap = shadowRoot.getElementById("mSelWrap");
+            this._mSel = shadowRoot.getElementById("mSel");
+            TUTAR_MEASURES.forEach(([id, label]) => this._mSel.add(new Option(label, id)));
+            this._tutar = TUTAR_MEASURES[0][0];
+            this._mSel.addEventListener("change", () => this.setMeasureSelection(this._mSel.value));
             this._table = null;
             this._token = 0;
             this._sel = new Map();
@@ -286,7 +295,7 @@
         }
 
         onCustomWidgetAfterUpdate(changedProperties) {
-            if (["providerId", "rowDims", "colDims", "filters", "measures"].some(k => k in changedProperties)) this._scheduleReload();
+            if (["providerId", "rowDims", "colDims", "filters", "measures", "measureSelect"].some(k => k in changedProperties)) this._scheduleReload();
         }
 
         onCustomWidgetResize() {
@@ -306,6 +315,18 @@
 
         setCompanyCode(companyCode) {
             this.setFilter("ZSIRKET_KODU", companyCode);
+        }
+
+        setMeasureSelection(measure) {
+            const id = String(measure || "").trim().toUpperCase();
+            if (!TUTAR_MEASURES.some(x => x[0] === id)) return;
+            this._tutar = id;
+            this._mSel.value = id;
+            this._scheduleReload();
+        }
+
+        getMeasureSelection() {
+            return this._tutar;
         }
 
         getFilter(dimension) {
@@ -348,6 +369,12 @@
             const rows = parseItems(this.rowDims);
             const cols = parseItems(this.colDims);
             const measures = parseItems(this.measures);
+            const tutarOn = !!String(this.measureSelect || "").trim();
+            this._mSelWrap.hidden = !tutarOn;
+            if (tutarOn && !measures.some(m => m.id === this._tutar)) {
+                const t = TUTAR_MEASURES.find(x => x[0] === this._tutar);
+                measures.push({ id: t[0], base: t[0], attr: "", label: t[1] });
+            }
             const filters = parseFilters(this.filters);
             SCRIPT_ONLY.forEach(([d]) => filters.delete(d));
             this._override.forEach((vals, dim) => { if (vals.length) filters.set(dim, vals); else filters.delete(dim); });
