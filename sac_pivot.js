@@ -523,9 +523,12 @@
             const curIdx = p.rows.findIndex(d => d.id === "ZCURRENCY");
             const free = mIds.map(m => curIdx >= 0 && CUR_FREE.has(m));
             const freeVals = [];
+            const vUsed = new Set();
+            this._vUsed = vUsed;
             const add = (row, ci, mi, x) => {
                 const f = `v${ci}_${mi}`;
                 row[f] = (row[f] || 0) + x;
+                vUsed.add(f);
                 if (!withTotal) return;
                 let tf = "t_" + mi;
                 if (pIdx >= 0) {
@@ -640,7 +643,7 @@
                 };
             };
             const build = (list, level) => {
-                if (level === nc) return ms.map((m, mi) => leaf(list[0], mi, m.label));
+                if (level === nc) return ms.map((m, mi) => this._vUsed.has(`v${list[0].ci}_${mi}`) ? leaf(list[0], mi, m.label) : null).filter(Boolean);
                 const groups = [];
                 list.forEach(c => {
                     const g = groups[groups.length - 1];
@@ -650,8 +653,9 @@
                 return groups.map(g => {
                     const title = this._label(colIds[level], g.v);
                     if (level === nc - 1 && ms.length === 1) return leaf(g.list[0], 0, title);
-                    return { title, headerTooltip: g.v, cssClass: "pgroup", columns: build(g.list, level + 1) };
-                });
+                    const kids = build(g.list, level + 1);
+                    return kids.length ? { title, headerTooltip: g.v, cssClass: "pgroup", columns: kids } : null;
+                }).filter(Boolean);
             };
             const defs = this._cols.length ? build(this._cols, 0) : [];
             if (nc && defs.length && this._totCols.length) {
