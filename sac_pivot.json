@@ -6,20 +6,20 @@
     "vendor": "Custom",
     "license": "",
     "id": "com.custom.sacpivot",
-    "version": "1.7.0",
+    "version": "1.8.0",
     "icon": "",
     "webcomponents": [
         {
             "kind": "main",
             "tag": "custom-sac-pivot",
-            "url": "https://bizimniyan.github.io/sac-widgets/sac_pivot.js?v=170",
+            "url": "https://bizimniyan.github.io/sac-widgets/sac_pivot.js?v=180",
             "integrity": "",
             "ignoreIntegrity": true
         },
         {
             "kind": "builder",
             "tag": "custom-sac-pivot-builder",
-            "url": "https://bizimniyan.github.io/sac-widgets/sac_pivot_builder.js?v=170",
+            "url": "https://bizimniyan.github.io/sac-widgets/sac_pivot_builder.js?v=180",
             "integrity": "",
             "ignoreIntegrity": true
         }
@@ -30,8 +30,8 @@
         "providerId": { "type": "string", "default": "Cgo60cs80hp2214495dtio17t3c" },
         "rowDims": { "type": "string", "default": "ZMALZEME:Malzeme, ZTEDARIKCI:Tedarikçi, ZCURRENCY:Para Birimi" },
         "colDims": { "type": "string", "default": "ZPARAMETRE:Parametre, Date" },
-        "filters": { "type": "string", "default": "ZPARAMETRE=USM0016,USM0017,USM0018,USM0003_T" },
-        "measures": { "type": "string", "default": "ZMIKTAR:Miktar" },
+        "filters": { "type": "string", "default": "ZPARAMETRE=USM0016,USM0017,USM0018,USM0003_T,USM0008" },
+        "measures": { "type": "string", "default": "ZMIKTAR:Miktar,ZORAN:Oran" },
         "measureSelect": { "type": "string", "default": "x" }
     },
     "methods": {

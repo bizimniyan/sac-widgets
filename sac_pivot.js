@@ -2,7 +2,6 @@
     const TABULATOR_JS = "https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js";
     const FFLATE_JS = "https://unpkg.com/fflate@0.8.2/esm/browser.js";
     const MAX_HITS = 200;
-    const DATES_KEY = "sacPivotDates:";
     const NO_MASTER = new Set(["Date", "Version", "ZCURRENCY"]);
     const DIM_LABEL = { Date: "Dönem", Version: "Versiyon" };
     const DESC_ONLY = new Set(["ZPARAMETRE"]);
@@ -11,6 +10,8 @@
     const SUP_PARAMS = new Set(["USM0008"]);
     const TUTAR_MEASURES = ["ZTUTAR", "ZTUTAR_EUR", "ZTUTAR_USD", "ZTUTAR_TRY"];
     const SEP = "\u0001";
+    const BLOCK = 200;
+    const ROW_H = 26;
     const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
     const loadScript = (src) => new Promise((resolve, reject) => {
@@ -93,6 +94,11 @@
 
     const q = (v) => String(v).replace(/'/g, "''");
     const orEq = (field, ids) => "(" + ids.map(id => `${field} eq '${q(id)}'`).join(" or ") + ")";
+    const chunks = (arr, n) => {
+        const out = [];
+        for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
+        return out;
+    };
     const and = (a, b) => a && b ? `${a} and ${b}` : a || b;
     const splitList = (text) => String(text || "").split(/[;,\n]/).map(s => s.trim()).filter(Boolean);
     const memberId = (v) => {
@@ -133,7 +139,8 @@
         const el = cell.getElement();
         if (el.classList.contains("dash") !== empty) el.classList.toggle("dash", empty);
         if (!empty) return nf.format(v);
-        return cell.getData()._total ? "" : "–";
+        const d = cell.getData();
+        return d._total || d._wait ? "" : "–";
     };
     const errText = (e) => e && e.message ? e.message : String(e);
 
@@ -159,12 +166,6 @@
     };
     const stopEvents = (el) => ["mousedown", "mouseup", "click", "dblclick", "keydown", "keyup", "keypress", "contextmenu"]
         .forEach(ev => el.addEventListener(ev, e => e.stopPropagation()));
-    const readCache = (key) => {
-        try { return JSON.parse(window.localStorage.getItem(DATES_KEY + key) || "null"); } catch (e) { return null; }
-    };
-    const writeCache = (key, val) => {
-        try { window.localStorage.setItem(DATES_KEY + key, JSON.stringify(val)); } catch (e) { return; }
-    };
 
     let template = document.createElement("template");
     template.innerHTML = `
@@ -399,6 +400,10 @@
             const token = ++this._token;
             this._pid = p.pid;
             this._pop.hidden = true;
+            this._full = false;
+            this._bulkPromise = null;
+            this._blocks = new Map();
+            this._r0State = new Map();
             if (!p.pid || !p.rows.length || !p.measures.length) {
                 this._destroyTable();
                 this._setStatus("Builder panelinden model, satır boyutları ve measure girin.");
@@ -422,52 +427,32 @@
                 attrs.get(d.base).add(d.attr);
             });
             const mIds = p.measures.map(m => m.id);
+            const afBases = attrFilters.map(d => d.base);
+            const rowSel = Array.from(new Set(p.rows.map(d => d.base).concat(afBases, p.rows.some(d => d.id === "ZTEDARIKCI") ? ["ZPARAMETRE"] : []))).concat(mIds).join(",");
+            const colSel = Array.from(new Set(p.cols.map(d => d.base).concat(afBases))).concat(mIds).join(",");
+            const sel = dims.concat(mIds).join(",");
+            const d0 = p.rows[0];
+            this._p = p;
+            this._af = attrFilters;
+            this._filter = filter;
+            this._qSel = sel;
             const t0 = Date.now();
-            this._setStatus("Yükleniyor…");
+            this._setStatus("Satırlar yükleniyor…");
 
             try {
-                let dates = [null];
-                let datesP = null;
-                let cached = null;
-                if (dims.indexOf("Date") >= 0) {
-                    if (p.filters.has("Date")) {
-                        dates = p.filters.get("Date");
-                    } else {
-                        datesP = this._get("FactDataAggregation", { $select: "Date," + mIds.join(","), $filter: filter })
-                            .then(rows => Array.from(new Set(rows.map(r => r.Date).filter(Boolean))).sort());
-                        datesP.catch(() => {});
-                        cached = readCache(p.sig);
-                        dates = cached || await datesP;
-                    }
-                }
+                const hasDate = dims.indexOf("Date") >= 0;
+                const fixedDates = hasDate && p.filters.has("Date") ? p.filters.get("Date") : null;
                 const masterDims = dims.filter(d => !NO_MASTER.has(d) || attrs.has(d));
-                const sel = dims.concat(mIds).join(",");
-                let done = 0;
-                const total = dates.length + masterDims.length;
-                const step = (pr) => pr.then(v => {
-                    done++;
-                    if (token === this._token && !this._table) this._setStatus(`Yükleniyor… ${done} / ${total}`);
-                    return v;
-                });
-                const [, masters, valueSets] = await Promise.all([
+                const [, masters, rowRecs, colRecs, freshDates] = await Promise.all([
                     loadScript(TABULATOR_JS),
-                    Promise.all(masterDims.map(d => step(this._get(`${d}Master`, { $select: ["ID", "Description"].concat(Array.from(attrs.get(d) || [])).join(",") })
-                        .catch(e => { if (attrs.has(d)) throw new Error(`${d} özellikleri okunamadı (${Array.from(attrs.get(d)).join(", ")}): ${errText(e)}`); return []; })))),
-                    Promise.all(dates.map(d => step(this._get("FactDataAggregation", {
-                        $select: sel,
-                        $filter: d === null ? filter : and(filter, `Date eq '${q(d)}'`)
-                    }))))
+                    Promise.all(masterDims.map(d => this._get(`${d}Master`, { $select: ["ID", "Description"].concat(Array.from(attrs.get(d) || [])).join(",") })
+                        .catch(e => { if (attrs.has(d)) throw new Error(`${d} özellikleri okunamadı (${Array.from(attrs.get(d)).join(", ")}): ${errText(e)}`); return []; }))),
+                    this._get("FactDataAggregation", { $select: rowSel, $filter: filter }),
+                    this._get("FactDataAggregation", { $select: colSel, $filter: filter }),
+                    hasDate && !fixedDates ? this._get("FactDataAggregation", { $select: "Date," + mIds.join(","), $filter: filter })
+                        .then(rows => Array.from(new Set(rows.map(r => r.Date).filter(Boolean))).sort()) : null
                 ]);
                 if (token !== this._token) return;
-                if (datesP && cached) {
-                    datesP.then(fresh => {
-                        if (token !== this._token) return;
-                        writeCache(p.sig, fresh);
-                        if (fresh.join() !== cached.join()) this._reload(true);
-                    }).catch(() => {});
-                } else if (datesP) {
-                    writeCache(p.sig, dates);
-                }
                 this._desc = new Map();
                 this._attrs = new Map();
                 masterDims.forEach((d, i) => {
@@ -476,19 +461,111 @@
                     if (m.size && !NO_MASTER.has(d)) this._desc.set(d, m);
                     if (attrs.has(d)) this._attrs.set(d, new Map(masters[i].map(r => [r.ID, r])));
                 });
-                this._buildData(p, valueSets, attrFilters);
+                this._buildData(Object.assign({}, p, { rows: [] }), [colRecs], attrFilters);
+                const colState = { cols: this._cols, totCols: this._totCols, vUsed: this._vUsed };
+                this._buildData(Object.assign({}, p, { cols: [] }), [rowRecs], attrFilters);
+                Object.assign(this, { _cols: colState.cols, _totCols: colState.totCols, _vUsed: colState.vUsed });
+                this._colIndex = new Map(this._cols.map(c => [c.vals.join(SEP), c.ci]));
+                this._tParams = new Map();
+                this._totCols.forEach(t => { if (t.param !== undefined) this._tParams.set(t.param, Number(t.field.slice(1, t.field.indexOf("_")))); });
+                this._byRow = new Map();
+                this._rows.forEach(row => {
+                    for (const k in row) if (/^v\d+_\d+$/.test(k)) delete row[k];
+                    row._wait = true;
+                    this._byRow.set(row.key, row);
+                });
                 if (!this._rows.length) {
                     this._destroyTable();
                     this._setStatus("Bu filtrelerle veri yok.");
                     return;
                 }
+                this._blockOn = !d0.attr && d0.id !== "ZCURRENCY" && this._rows.every(r => r.r0 !== "");
+                this._preWild = this._blockOn ? this._get("FactDataAggregation", { $select: sel, $filter: and(filter, `${d0.id} eq '#'`) }) : null;
+                if (this._preWild) this._preWild.catch(() => {});
                 this._buildTable(p);
                 this._loadMs = Date.now() - t0;
                 this._updateStatus();
+                this._bulkPromise = this._loadBulk(this._fetchBulk(!hasDate ? [null] : fixedDates || freshDates), token, t0);
+                this._bulkPromise.catch(() => {});
             } catch (e) {
                 if (token !== this._token || (e && e.name === "AbortError")) return;
                 this._loadSig = null;
                 this._setStatus("Yüklenemedi: " + errText(e), true);
+            }
+        }
+
+        _fetchBulk(dates) {
+            return Promise.all(dates.map(d => this._get("FactDataAggregation", {
+                $select: this._qSel,
+                $filter: d === null ? this._filter : and(this._filter, `Date eq '${q(d)}'`)
+            }))).then(sets => [].concat(...sets));
+        }
+
+        _fixed(only) {
+            return { colIndex: this._colIndex, cols: this._cols, tParams: this._tParams, byRow: this._byRow, only };
+        }
+
+        _clearVals(rows) {
+            const fields = this._leaves.map(c => c.field);
+            rows.forEach(row => {
+                for (let i = 0; i < fields.length; i++) row[fields[i]] = null;
+                row._wait = false;
+            });
+        }
+
+        async _loadBulk(bulk, token, t0) {
+            const recs = await bulk;
+            if (token !== this._token) return;
+            this._clearVals(this._rows);
+            this._buildData(this._p, [recs], this._af, this._fixed(null));
+            this._full = true;
+            this._loadMs = Date.now() - t0;
+            this._applyFilter();
+        }
+
+        _loadVisible() {
+            if (!this._table || this._full || !this._blockOn) return;
+            const holder = this._tableEl.querySelector(".tabulator-tableholder");
+            const shown = this._shown;
+            if (!holder || !shown.length) return;
+            const from = Math.max(0, Math.floor(holder.scrollTop / ROW_H) - 1);
+            const to = Math.min(shown.length - 1, Math.ceil((holder.scrollTop + holder.clientHeight) / ROW_H));
+            for (let b = Math.max(0, Math.floor(from / BLOCK) - 1); b <= Math.floor(to / BLOCK) + 1; b++) this._loadBlock(b);
+        }
+
+        async _loadBlock(b) {
+            const shown = this._shown;
+            const start = b * BLOCK;
+            if (start >= shown.length || this._blocks.get(b) === shown) return;
+            this._blocks.set(b, shown);
+            const vals = Array.from(new Set(shown.slice(start, start + BLOCK).map(r => r.r0))).filter(v => !this._r0State.has(v)).sort(cmpCode);
+            if (!vals.length) return;
+            vals.forEach(v => this._r0State.set(v, "busy"));
+            const token = this._token;
+            const d0 = this._p.rows[0].id;
+            const real = vals.filter(v => v !== "#");
+            const same = real.length && real.every(v => /^\d+$/.test(v) && v.length === real[0].length);
+            try {
+                const parts = !real.length ? [] : same ? [`${d0} ge '${q(real[0])}' and ${d0} le '${q(real[real.length - 1])}'`]
+                    : chunks(real, 40).map(c => orEq(d0, c));
+                const [pre, ...sets] = await Promise.all([this._preWild].concat(parts.map(f => this._get("FactDataAggregation", { $select: this._qSel, $filter: and(this._filter, f) }))));
+                if (token !== this._token || this._full) return;
+                const set = new Set(vals);
+                const rows = this._rows.filter(r => set.has(r.r0));
+                this._clearVals(rows);
+                this._buildData(this._p, [[].concat(...sets).filter(r => r[d0] !== "#"), pre], this._af, this._fixed(new Set(rows.map(r => r.key))));
+                vals.forEach(v => this._r0State.set(v, "done"));
+                const fields = this._leaves.map(c => c.field);
+                const upd = rows.filter(r => this._table.getRow(r.key)).map(r => {
+                    const u = { key: r.key, _wait: false };
+                    fields.forEach(f => { u[f] = r[f] === undefined ? null : r[f]; });
+                    return u;
+                });
+                if (upd.length) await this._table.updateData(upd);
+            } catch (e) {
+                vals.forEach(v => { if (this._r0State.get(v) === "busy") this._r0State.delete(v); });
+                this._blocks.delete(b);
+                if (token === this._token && !(e && e.name === "AbortError")) this._setStatus("Değerler alınamadı: " + errText(e), true);
             }
         }
 
@@ -511,17 +588,19 @@
             return v === undefined || v === null ? "" : String(v);
         }
 
-        _buildData(p, valueSets, attrFilters) {
+        _buildData(p, valueSets, attrFilters, fixed) {
             const rowIds = p.rows.map(d => d.id);
             const mIds = p.measures.map(m => m.id);
             const af = attrFilters.map(d => [d, new Set(p.filters.get(d.id))]);
             const withTotal = p.cols.length > 0;
             const pIdx = p.cols.length > 1 ? p.cols.findIndex(d => d.id === "ZPARAMETRE") : -1;
-            const tParams = new Map();
+            const tParams = fixed ? fixed.tParams : new Map();
             const tUsed = new Set();
-            const byRow = new Map();
-            const colIndex = new Map();
-            const cols = [];
+            const byRow = fixed ? fixed.byRow : new Map();
+            const colIndex = fixed ? fixed.colIndex : new Map();
+            const cols = fixed ? fixed.cols : [];
+            const byCi = fixed ? new Map(cols.map(c => [c.ci, c])) : null;
+            const only = fixed && fixed.only;
             const curIdx = p.rows.findIndex(d => d.id === "ZCURRENCY");
             const matIdx = p.rows.findIndex(d => d.id === "ZMALZEME");
             const supOn = p.rows.some(d => d.id === "ZTEDARIKCI");
@@ -529,23 +608,28 @@
             const isNone = (v) => v === "#" || v === "";
             const freeVals = [];
             const vUsed = new Set();
-            this._vUsed = vUsed;
+            if (!fixed) this._vUsed = vUsed;
             const add = (row, ci, mi, x) => {
+                if (!row || (only && !only.has(row.key))) return;
                 const f = `v${ci}_${mi}`;
                 row[f] = (row[f] || 0) + x;
                 vUsed.add(f);
                 if (!withTotal) return;
                 let tf = "t_" + mi;
                 if (pIdx >= 0) {
-                    const pv = cols[ci].vals[pIdx];
+                    const pv = (byCi ? byCi.get(ci) : cols[ci]).vals[pIdx];
                     let k = tParams.get(pv);
-                    if (k === undefined) tParams.set(pv, k = tParams.size);
+                    if (k === undefined) {
+                        if (fixed) return;
+                        tParams.set(pv, k = tParams.size);
+                    }
                     tf = `t${k}_${mi}`;
                     tUsed.add(tf);
                 }
                 row[tf] = (row[tf] || 0) + x;
             };
             const newRow = (rk, rvals) => {
+                if (fixed) return null;
                 const row = { key: rk };
                 rvals.forEach((v, i) => {
                     row["r" + i] = v;
@@ -567,6 +651,7 @@
                 const ck = cvals.join(SEP);
                 let ci = colIndex.get(ck);
                 if (ci === undefined) {
+                    if (fixed) return;
                     colIndex.set(ck, ci = cols.length);
                     cols.push({ ci, vals: cvals });
                 }
@@ -606,6 +691,7 @@
                     targets.forEach(row => add(row, fv.ci, fv.mi, fv.x));
                 });
             }
+            if (fixed) return;
             const orders = p.cols.map(d => d.id).map(d => {
                 const fixed = p.filters.get(d);
                 const pos = fixed ? new Map(fixed.map((v, i) => [v, i])) : null;
@@ -720,9 +806,10 @@
                 if (this._twoCols(d.id)) row[`r${i}d`] = "";
             });
             row.r0 = "Toplam";
-            if (this._twoCols(this._rowDims[0].id)) row.r0d = `${nf.format(shown.length)} satır`;
+            if (this._twoCols(this._rowDims[0].id)) row.r0d = this._full ? `${nf.format(shown.length)} satır` : "hesaplanıyor…";
             const fields = this._leaves.map(c => c.field);
             fields.forEach(f => { row[f] = null; });
+            if (!this._full) return row;
             shown.forEach(r => {
                 for (let i = 0; i < fields.length; i++) {
                     const v = r[fields[i]];
@@ -736,7 +823,7 @@
             this._inputs.forEach((input, dim) => input.classList.toggle("on", this._sel.has(dim)));
             if (!this._table) return;
             this._shown = this._filtered();
-            this._table.replaceData([this._totalRow()].concat(this._shown));
+            this._table.replaceData([this._totalRow()].concat(this._shown)).then(() => this._loadVisible());
             this._updateStatus();
         }
 
@@ -773,6 +860,11 @@
                 placeholder: "Seçime uyan satır yok",
                 rowFormatter: (row) => { if (row.getData()._total) row.getElement().classList.add("row-total"); }
             });
+            this._table.on("tableBuilt", () => this._loadVisible());
+            this._table.on("scrollVertical", () => {
+                if (this._scrollTimer) return;
+                this._scrollTimer = setTimeout(() => { this._scrollTimer = null; this._loadVisible(); }, 100);
+            });
         }
 
         _buildHeader(i, d) {
@@ -804,9 +896,12 @@
             this._exporting = true;
             const btn = this._xlsBtn;
             btn.disabled = true;
-            btn.textContent = "Excel hazırlanıyor…";
+            btn.textContent = "Excel: veri yükleniyor…";
             try {
                 const fflate = await import(FFLATE_JS);
+                if (!this._full && this._bulkPromise) await this._bulkPromise;
+                if (!this._full) throw new Error("değerler henüz yüklenmedi");
+                btn.textContent = "Excel hazırlanıyor…";
                 await tick();
                 const dims = this._rowDims;
                 const head = [];
@@ -853,7 +948,7 @@
             const n = this._shown.length;
             const all = this._rows.length;
             const secs = this._loadMs ? ` · ${(this._loadMs / 1000).toFixed(1)} sn` : "";
-            this._setStatus(`${n === all ? nf.format(all) : `${nf.format(n)} / ${nf.format(all)}`} satır${secs}`);
+            this._setStatus(`${n === all ? nf.format(all) : `${nf.format(n)} / ${nf.format(all)}`} satır${this._full ? secs : " · değerler yükleniyor…"}`);
         }
 
         _destroyTable() {

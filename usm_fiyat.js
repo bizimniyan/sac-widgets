@@ -6,6 +6,8 @@
     const MAX_HITS = 200;
     const DEFAULT_MEASURES = ["ZORAN", "ZFIYAT"];
     const DATES_KEY = "usmFiyatDates:";
+    const BLOCK = 200;
+    const ROW_H = 26;
     const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
     const XLSX_HEAD = ["Malzeme", "Açıklama", "Grup 1", "Grup 2", "Tedarikçi", "Tedarikçi Adı", "Para Birimi"];
 
@@ -106,7 +108,8 @@
         const el = cell.getElement();
         if (el.classList.contains("dash") !== empty) el.classList.toggle("dash", empty);
         if (!empty) return nf.format(v);
-        return cell.getData()._total ? "" : "–";
+        const d = cell.getData();
+        return d._total || d._wait ? "" : "–";
     };
     const errText = (e) => e && e.message ? e.message : String(e);
 
@@ -138,6 +141,11 @@
     };
     const writeCache = (key, val) => {
         try { window.localStorage.setItem(DATES_KEY + key, JSON.stringify(val)); } catch (e) { return; }
+    };
+    const chunks = (arr, n) => {
+        const out = [];
+        for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
+        return out;
     };
 
     let template = document.createElement("template");
@@ -276,6 +284,8 @@
             this._allIds = [];
             this._allIndex = new Map();
             this._matDesc = new Map();
+            this._matAttr = new Map();
+            this._supVals = new Map();
             this._grp = { 1: null, 2: null, cur: null };
             this._gHeader = {};
             this._kodHeaderEl = this._buildFilterHeader("mat");
@@ -400,54 +410,75 @@
             this._pid = p.pid;
             this._params = p.params;
             this._measures = p.measures;
+            this._full = false;
+            this._bulkPromise = null;
+            this._blocks = new Map();
+            this._matState = new Map();
             if (!p.pid || !p.version || !p.params.length) {
                 this._setStatus("Builder panelinden model, versiyon ve parametreleri girin.");
                 return;
             }
             const scope = `Version eq '${q(p.version)}'` + (p.companies.length ? ` and ${orEq("ZSIRKET_KODU", p.companies)}` : "");
-            const paramFilter = `${scope} and ${orEq("ZPARAMETRE", p.params)}`;
+            const paramFilter = `${scope} and ${orEq("ZPARAMETRE", p.params)} and Date ne '${NONE}'`;
+            this._paramFilter = paramFilter;
+            const ms = p.measures.join(",");
             const t0 = Date.now();
-            this._setStatus("Yükleniyor…");
+            this._setStatus("Satırlar yükleniyor…");
+            const cached = readCache(p.sig);
+            let bulk = cached ? this._fetchBulk(cached) : null;
+            if (bulk) bulk.catch(() => {});
 
             try {
-                const datesP = this._get("FactDataAggregation", { $select: "Date," + p.measures.join(","), $filter: paramFilter })
-                    .then(rows => rows.map(r => r.Date).filter(d => d && d !== NONE).sort());
-                datesP.catch(() => {});
-                const cached = readCache(p.sig);
-                const dates = cached || await datesP;
-                let done = 0;
-                const progress = () => {
-                    if (token === this._token && !this._table) this._setStatus(`Yükleniyor… ${done} / ${dates.length + 2}`);
-                };
-                const step = (pr) => pr.then(v => { done++; progress(); return v; });
-                const sel = ["ZMALZEME", "ZTEDARIKCI", "ZCURRENCY", "ZPARAMETRE"].concat(p.measures).join(",");
-                const [, matRows, supRows, paramRows, ...valueSets] = await Promise.all([
+                const [, rowRecs, colRecs, supRecs, paramRows, supRows] = await Promise.all([
                     loadScript(TABULATOR_JS),
-                    step(this._get("ZMALZEMEMaster", { $select: "ID,Description,MALZ_GRUP1,MALZ_GRUP2" })),
-                    step(this._get("ZTEDARIKCIMaster", { $select: "ID,Description" })),
+                    this._get("FactDataAggregation", { $select: `ZMALZEME,ZTEDARIKCI,ZCURRENCY,${ms}`, $filter: `${paramFilter} and ZMALZEME ne '${NONE}'` }),
+                    this._get("FactDataAggregation", { $select: `ZPARAMETRE,Date,${ms}`, $filter: `${paramFilter} and (ZMALZEME ne '${NONE}' or ZTEDARIKCI ne '${NONE}')` }),
+                    this._get("FactDataAggregation", { $select: `ZTEDARIKCI,ZPARAMETRE,Date,${ms}`, $filter: `${paramFilter} and ZMALZEME eq '${NONE}' and ZTEDARIKCI ne '${NONE}'` }),
                     this._get("ZPARAMETREMaster", { $select: "ID,Description", $filter: orEq("ID", p.params) }).catch(() => []),
-                    ...dates.map(d => step(this._get("FactDataAggregation", { $select: sel, $filter: `${paramFilter} and Date eq '${q(d)}'` })))
+                    this._get("ZTEDARIKCIMaster", { $select: "ID,Description" }).catch(() => [])
                 ]);
                 if (token !== this._token) return;
-                if (cached) {
-                    datesP.then(fresh => {
-                        if (token !== this._token) return;
-                        writeCache(p.sig, fresh);
-                        if (fresh.join() !== cached.join()) this._reload(true);
-                    }).catch(() => {});
-                } else {
-                    writeCache(p.sig, dates);
-                }
                 this._paramDesc = new Map(paramRows.filter(r => r.Description).map(r => [r.ID, r.Description]));
-                this._matDesc = new Map();
-                this._matAttr = new Map();
-                matRows.forEach(r => {
-                    this._matDesc.set(r.ID, r.Description || "");
-                    this._matAttr.set(r.ID, { g1: r.MALZ_GRUP1 || "", g2: r.MALZ_GRUP2 || "" });
-                });
                 this._supDesc = new Map(supRows.map(r => [r.ID, r.Description || ""]));
-                this._buildRows(dates, valueSets);
-                if (!this._rows.length) {
+                const paramDates = new Map(this._params.map(pr => [pr, new Set()]));
+                colRecs.forEach(r => { if (this._valOf(r) !== null && paramDates.has(r.ZPARAMETRE)) paramDates.get(r.ZPARAMETRE).add(r.Date); });
+                this._supVals = new Map();
+                supRecs.forEach(r => {
+                    const v = this._valOf(r);
+                    if (v === null) return;
+                    let s = this._supVals.get(r.ZTEDARIKCI);
+                    if (!s) this._supVals.set(r.ZTEDARIKCI, s = {});
+                    const f = fieldOf(r.ZPARAMETRE, r.Date);
+                    s[f] = (s[f] || 0) + v;
+                });
+                const byKey = new Map();
+                rowRecs.forEach(r => {
+                    if (this._valOf(r) === null) return;
+                    const key = `${r.ZMALZEME}|${r.ZTEDARIKCI}|${r.ZCURRENCY}`;
+                    if (byKey.has(key)) return;
+                    const sup = r.ZTEDARIKCI === NONE ? "" : r.ZTEDARIKCI;
+                    byKey.set(key, {
+                        key, mat: r.ZMALZEME, sup, cur: r.ZCURRENCY === NONE ? "" : r.ZCURRENCY,
+                        desc: this._matDesc.has(r.ZMALZEME) ? this._matDesc.get(r.ZMALZEME) : null,
+                        g1: "", g2: "", supName: sup ? this._supDesc.get(sup) || "" : "", _wait: true
+                    });
+                });
+                const rows = Array.from(byKey.values());
+                rows.forEach(row => { const a = this._matAttr.get(row.mat); if (a) { row.g1 = a.g1; row.g2 = a.g2; } });
+                rows.sort((a, b) => cmpCode(a.mat, b.mat) || cmpCode(a.sup, b.sup) || (a.cur < b.cur ? -1 : a.cur > b.cur ? 1 : 0));
+                this._byKey = byKey;
+                this._rows = rows;
+                this._allIds = Array.from(new Set(rows.map(r => r.mat)));
+                this._allIndex = new Map(this._allIds.map((id, i) => [id, i]));
+                this._supIds = Array.from(new Set(rows.map(r => r.sup).filter(Boolean))).sort(cmpCode);
+                this._valueCols = [];
+                this._params.forEach(pr => {
+                    const ds = Array.from(paramDates.get(pr)).sort();
+                    const title = this._paramDesc.get(pr) || pr;
+                    if (!ds.length) ds.push(NO_DATE);
+                    ds.forEach(d => this._valueCols.push({ param: pr, date: d, field: fieldOf(pr, d), title, single: ds.length === 1 }));
+                });
+                if (!rows.length) {
                     this._destroyTable();
                     this._setStatus(`${p.version}${p.companies.length ? " / " + p.companies.join(",") : ""} için bu parametrelerle malzeme verisi yok.`);
                     return;
@@ -455,6 +486,14 @@
                 this._buildTable();
                 this._loadMs = Date.now() - t0;
                 this._updateStatus();
+                const dates = Array.from(new Set(colRecs.map(r => r.Date))).sort();
+                if (!cached || cached.join() !== dates.join()) {
+                    writeCache(p.sig, dates);
+                    bulk = this._fetchBulk(dates);
+                }
+                this._bulkPromise = this._loadBulk(bulk, token, t0);
+                this._bulkPromise.catch(() => {});
+                this._loadMasters(token);
             } catch (e) {
                 if (token !== this._token || (e && e.name === "AbortError")) return;
                 this._loadSig = null;
@@ -462,63 +501,122 @@
             }
         }
 
-        _buildRows(dates, valueSets) {
+        _valOf(r) {
             const measures = this._measures;
-            const byKey = new Map();
-            const supVals = new Map();
-            const supFields = new Set();
-            const paramDates = new Map(this._params.map(pr => [pr, new Set()]));
-            valueSets.forEach((rows, i) => {
-                const date = dates[i];
-                rows.forEach(r => {
-                    let v = null;
-                    for (let k = 0; k < measures.length; k++) {
-                        const x = r[measures[k]];
-                        if (x !== null && x !== undefined) { v = x; break; }
-                    }
-                    if (v === null || !paramDates.has(r.ZPARAMETRE)) return;
-                    const f = fieldOf(r.ZPARAMETRE, date);
-                    let target;
-                    if (r.ZMALZEME && r.ZMALZEME !== NONE) {
-                        const key = `${r.ZMALZEME}|${r.ZTEDARIKCI}|${r.ZCURRENCY}`;
-                        target = byKey.get(key);
-                        if (!target) byKey.set(key, target = { key, mat: r.ZMALZEME, sup: r.ZTEDARIKCI, cur: r.ZCURRENCY });
-                    } else if (r.ZTEDARIKCI && r.ZTEDARIKCI !== NONE) {
-                        target = supVals.get(r.ZTEDARIKCI);
-                        if (!target) supVals.set(r.ZTEDARIKCI, target = {});
-                        supFields.add(f);
-                    } else {
-                        return;
-                    }
-                    target[f] = (target[f] || 0) + v;
-                    paramDates.get(r.ZPARAMETRE).add(date);
-                });
+            for (let k = 0; k < measures.length; k++) {
+                const x = r[measures[k]];
+                if (x !== null && x !== undefined) return x;
+            }
+            return null;
+        }
+
+        _fill(rows, recs) {
+            const vals = new Map(rows.map(row => [row.key, {}]));
+            recs.forEach(r => {
+                const t = vals.get(`${r.ZMALZEME}|${r.ZTEDARIKCI}|${r.ZCURRENCY}`);
+                if (!t) return;
+                const v = this._valOf(r);
+                if (v === null) return;
+                const f = fieldOf(r.ZPARAMETRE, r.Date);
+                t[f] = (t[f] || 0) + v;
             });
-            const sf = Array.from(supFields);
-            const rows = Array.from(byKey.values());
-            rows.forEach(row => {
+            const fields = this._valueCols.map(c => c.field);
+            return rows.map(row => {
+                const t = vals.get(row.key);
+                const s = row.sup && this._supVals.get(row.sup);
+                const upd = { key: row.key, _wait: false };
+                fields.forEach(f => { upd[f] = s && s[f] !== undefined ? s[f] : t[f] !== undefined ? t[f] : null; });
+                Object.assign(row, upd);
+                return upd;
+            });
+        }
+
+        _fetchBulk(dates) {
+            const sel = `ZMALZEME,ZTEDARIKCI,ZCURRENCY,ZPARAMETRE,Date,${this._measures.join(",")}`;
+            return Promise.all(dates.map(d => this._get("FactDataAggregation", {
+                $select: sel, $filter: `${this._paramFilter} and ZMALZEME ne '${NONE}' and Date eq '${q(d)}'`
+            }))).then(sets => [].concat(...sets));
+        }
+
+        async _loadBulk(bulk, token, t0) {
+            const recs = await bulk;
+            if (token !== this._token) return;
+            this._fill(this._rows, recs);
+            this._full = true;
+            this._loadMs = Date.now() - t0;
+            this._applyFilter();
+        }
+
+        async _loadMasters(token) {
+            const ids = this._allIds.slice().sort(cmpCode);
+            const want = new Set(ids);
+            const gap = (a, b) => /^\d+$/.test(a) && /^\d+$/.test(b) && a.length === b.length ? Number(b) - Number(a) : Infinity;
+            const cuts = ids.slice(1).map((id, i) => [gap(ids[i], id), i + 1]).sort((a, b) => b[0] - a[0]).slice(0, 5).map(c => c[1]).sort((a, b) => a - b);
+            const segs = [];
+            [0].concat(cuts).forEach((s, i, arr) => { const e = i + 1 < arr.length ? arr[i + 1] : ids.length; if (e > s) segs.push(ids.slice(s, e)); });
+            try {
+                await Promise.all(segs.map(async seg => {
+                    const rows = await this._get("ZMALZEMEMaster", {
+                        $select: "ID,Description,MALZ_GRUP1,MALZ_GRUP2",
+                        $filter: seg.length === 1 ? `ID eq '${q(seg[0])}'` : `ID ge '${q(seg[0])}' and ID le '${q(seg[seg.length - 1])}'`
+                    });
+                    rows.forEach(r => {
+                        if (!want.has(r.ID)) return;
+                        this._matDesc.set(r.ID, r.Description || "");
+                        this._matAttr.set(r.ID, { g1: r.MALZ_GRUP1 || "", g2: r.MALZ_GRUP2 || "" });
+                    });
+                }));
+            } catch (e) {
+                if (e && e.name === "AbortError") return;
+            }
+            if (token !== this._token) return;
+            this._rows.forEach(row => {
                 const a = this._matAttr.get(row.mat);
                 row.desc = this._matDesc.get(row.mat) || "";
                 row.g1 = a ? a.g1 : "";
                 row.g2 = a ? a.g2 : "";
-                row.supName = row.sup === NONE ? "" : this._supDesc.get(row.sup) || "";
-                if (row.sup === NONE) row.sup = "";
-                if (row.cur === NONE) row.cur = "";
-                const s = supVals.get(row.sup);
-                if (s) for (let i = 0; i < sf.length; i++) if (s[sf[i]] !== undefined) row[sf[i]] = s[sf[i]];
             });
-            rows.sort((a, b) => cmpCode(a.mat, b.mat) || cmpCode(a.sup, b.sup) || (a.cur < b.cur ? -1 : a.cur > b.cur ? 1 : 0));
-            this._rows = rows;
-            this._allIds = Array.from(new Set(rows.map(r => r.mat)));
-            this._allIndex = new Map(this._allIds.map((id, i) => [id, i]));
-            this._supIds = Array.from(new Set(rows.map(r => r.sup).filter(Boolean))).sort(cmpCode);
-            this._valueCols = [];
-            this._params.forEach(pr => {
-                const ds = Array.from(paramDates.get(pr)).sort();
-                const title = this._paramDesc.get(pr) || pr;
-                if (!ds.length) ds.push(NO_DATE);
-                ds.forEach(d => this._valueCols.push({ param: pr, date: d, field: fieldOf(pr, d), title, single: ds.length === 1 }));
-            });
+            this._applyFilter();
+        }
+
+        _loadVisible() {
+            if (!this._table || this._full) return;
+            const holder = this._tableEl.querySelector(".tabulator-tableholder");
+            const shown = this._shown;
+            if (!holder || !shown.length) return;
+            const from = Math.max(0, Math.floor(holder.scrollTop / ROW_H) - 1);
+            const to = Math.min(shown.length - 1, Math.ceil((holder.scrollTop + holder.clientHeight) / ROW_H));
+            for (let b = Math.max(0, Math.floor(from / BLOCK) - 1); b <= Math.floor(to / BLOCK) + 1; b++) this._loadBlock(b);
+        }
+
+        async _loadBlock(b) {
+            const shown = this._shown;
+            const start = b * BLOCK;
+            if (start >= shown.length || this._blocks.get(b) === shown) return;
+            this._blocks.set(b, shown);
+            const mats = Array.from(new Set(shown.slice(start, start + BLOCK).map(r => r.mat))).filter(m => !this._matState.has(m)).sort(cmpCode);
+            if (!mats.length) return;
+            mats.forEach(m => this._matState.set(m, "busy"));
+            const token = this._token;
+            const same = mats.every(m => /^\d+$/.test(m) && m.length === mats[0].length);
+            const lo = mats[0], hi = mats[mats.length - 1];
+            const sel = `ZMALZEME,ZTEDARIKCI,ZCURRENCY,ZPARAMETRE,Date,${this._measures.join(",")}`;
+            try {
+                const parts = same ? [`ZMALZEME ge '${q(lo)}' and ZMALZEME le '${q(hi)}'`] : chunks(mats, 40).map(c => orEq("ZMALZEME", c));
+                const recs = [].concat(...await Promise.all(parts.map(f => this._get("FactDataAggregation", { $select: sel, $filter: `${this._paramFilter} and ${f}` }))));
+                if (token !== this._token || this._full) return;
+                const inRange = same
+                    ? (m) => /^\d+$/.test(m) && m.length === lo.length && m >= lo && m <= hi && this._matState.get(m) !== "done"
+                    : (m) => mats.indexOf(m) >= 0;
+                const rows = this._rows.filter(r => inRange(r.mat));
+                rows.forEach(r => this._matState.set(r.mat, "done"));
+                const upd = this._fill(rows, recs).filter(u => this._table.getRow(u.key));
+                if (upd.length) await this._table.updateData(upd);
+            } catch (e) {
+                mats.forEach(m => { if (this._matState.get(m) === "busy") this._matState.delete(m); });
+                this._blocks.delete(b);
+                if (token === this._token && !(e && e.name === "AbortError")) this._setStatus("Değerler alınamadı: " + errText(e), true);
+            }
         }
 
         _filtered() {
@@ -533,9 +631,10 @@
 
         _totalRow() {
             const shown = this._shown;
-            const row = { key: "TOTAL", mat: "Toplam", desc: `${nf.format(shown.length)} satır`, g1: "", g2: "", sup: "", supName: "", cur: "", _total: true };
+            const row = { key: "TOTAL", mat: "Toplam", desc: this._full ? `${nf.format(shown.length)} satır` : "hesaplanıyor…", g1: "", g2: "", sup: "", supName: "", cur: "", _total: true };
             const fields = this._valueCols.map(c => c.field);
             fields.forEach(f => { row[f] = null; });
+            if (!this._full) return row;
             shown.forEach(r => {
                 for (let i = 0; i < fields.length; i++) {
                     const v = r[fields[i]];
@@ -550,7 +649,7 @@
             this._supInput.classList.toggle("on", !!this._supFilter);
             if (!this._table) return;
             this._shown = this._filtered();
-            this._table.replaceData([this._totalRow()].concat(this._shown));
+            this._table.replaceData([this._totalRow()].concat(this._shown)).then(() => this._loadVisible());
             this._updateStatus();
         }
 
@@ -596,6 +695,11 @@
                 placeholder: "Filtreye uyan satır yok",
                 rowFormatter: (row) => { if (row.getData()._total) row.getElement().classList.add("row-total"); }
             });
+            this._table.on("tableBuilt", () => this._loadVisible());
+            this._table.on("scrollVertical", () => {
+                if (this._scrollTimer) return;
+                this._scrollTimer = setTimeout(() => { this._scrollTimer = null; this._loadVisible(); }, 100);
+            });
             this._kodInput.classList.toggle("on", !!this._matFilter);
             this._supInput.classList.toggle("on", !!this._supFilter);
         }
@@ -609,9 +713,12 @@
             this._exporting = true;
             const btn = this._xlsBtn;
             btn.disabled = true;
-            btn.textContent = "Excel hazırlanıyor…";
+            btn.textContent = "Excel: veri yükleniyor…";
             try {
                 const fflate = await import(FFLATE_JS);
+                if (!this._full && this._bulkPromise) await this._bulkPromise;
+                if (!this._full) throw new Error("değerler henüz yüklenmedi");
+                btn.textContent = "Excel hazırlanıyor…";
                 await tick();
                 const vc = this._valueCols;
                 const head = XLSX_HEAD.concat(vc.map(c => c.single ? c.title : `${c.title} ${fmtDate(c.date)}`));
@@ -648,7 +755,7 @@
             const n = this._shown.length;
             const all = this._rows.length;
             const secs = this._loadMs ? ` · ${(this._loadMs / 1000).toFixed(1)} sn` : "";
-            this._setStatus(`${n === all ? nf.format(all) : `${nf.format(n)} / ${nf.format(all)}`} satır${secs}`);
+            this._setStatus(`${n === all ? nf.format(all) : `${nf.format(n)} / ${nf.format(all)}`} satır${this._full ? secs : " · değerler yükleniyor…"}`);
         }
 
         _destroyTable() {
