@@ -276,12 +276,13 @@
             this._allIds = [];
             this._allIndex = new Map();
             this._matDesc = new Map();
-            this._grp = { 1: null, 2: null };
+            this._grp = { 1: null, 2: null, cur: null };
             this._gHeader = {};
             this._kodHeaderEl = this._buildFilterHeader("mat");
             this._supHeaderEl = this._buildFilterHeader("sup");
             this._buildGroupHeader(1, "Grup 1");
             this._buildGroupHeader(2, "Grup 2");
+            this._buildGroupHeader("cur", "Para Birimi");
             this._initPopup();
             this._initGroupPopup();
         }
@@ -295,6 +296,7 @@
                 this._supFilter = splitList(this.supplierFilter).join("; ");
                 this._supInput.value = this._supFilter;
             }
+            if ("currencyFilter" in changedProperties) this._setGroup("cur", this.currencyFilter || "");
             if (["providerId", "version", "companyCode", "parameters", "measures"].some(k => k in changedProperties)) {
                 this._scheduleReload();
             } else if ("materialFilter" in changedProperties || "supplierFilter" in changedProperties) {
@@ -342,13 +344,22 @@
             this._setGroup(2, values);
         }
 
+        setCurrencyFilter(values) {
+            this._setGroup("cur", values);
+        }
+
+        getCurrencyFilter() {
+            return this._grp.cur ? Array.from(this._grp.cur).join(";") : "";
+        }
+
         refresh() {
             return this._reload(true);
         }
 
         _setGroup(level, values) {
             const list = values instanceof Set ? Array.from(values)
-                : typeof values === "string" ? (values.trim() ? values.split(";").map(s => s.trim()) : null)
+                : typeof values === "string" ? (level === "cur" ? splitList(values).map(v => v.toUpperCase())
+                    : values.trim() ? values.split(";").map(s => s.trim()) : null)
                 : Array.isArray(values) ? values : null;
             this._grp[level] = list && list.length ? new Set(list.map(v => v === "(boş)" ? "" : v)) : null;
             const g = this._grp[level];
@@ -515,8 +526,9 @@
             const sm = matcher(this._supFilter);
             const g1 = this._grp[1];
             const g2 = this._grp[2];
-            if (!m && !sm && !g1 && !g2) return this._rows;
-            return this._rows.filter(r => (!m || m(r.mat)) && (!sm || sm(r.sup)) && (!g1 || g1.has(r.g1)) && (!g2 || g2.has(r.g2)));
+            const gc = this._grp.cur;
+            if (!m && !sm && !g1 && !g2 && !gc) return this._rows;
+            return this._rows.filter(r => (!m || m(r.mat)) && (!sm || sm(r.sup)) && (!g1 || g1.has(r.g1)) && (!g2 || g2.has(r.g2)) && (!gc || gc.has(r.cur)));
         }
 
         _totalRow() {
@@ -552,7 +564,7 @@
                 { title: "Grup 2", field: "g2", width: 160, cssClass: "soft", titleFormatter: () => this._gHeader[2].el },
                 { title: "Tedarikçi", field: "sup", width: 160, titleFormatter: () => this._supHeaderEl },
                 { title: "Tedarikçi Adı", field: "supName", width: 220, cssClass: "soft" },
-                { title: "Para Birimi", field: "cur", width: 70 }
+                { title: "Para Birimi", field: "cur", width: 100, titleFormatter: () => this._gHeader.cur.el }
             ];
             const valueCol = (c, title, first) => ({
                 title, headerTooltip: `${c.param} ${fmtDate(c.date)}`, headerWordWrap: true, field: c.field, width: 105,
@@ -734,7 +746,7 @@
             const r = btn.getBoundingClientRect();
             this._gpop.style.left = Math.max(8, Math.min(r.left - wrap.left, wrap.width - 308)) + "px";
             this._gSearchEl.value = "";
-            const key = level === 1 ? "g1" : "g2";
+            const key = level === 1 ? "g1" : level === 2 ? "g2" : "cur";
             const counts = new Map();
             this._rows.forEach(row => counts.set(row[key], (counts.get(row[key]) || 0) + 1));
             this._gValues = Array.from(counts.entries()).sort((a, b) => a[0] === "" ? -1 : b[0] === "" ? 1 : a[0].localeCompare(b[0], "tr"));

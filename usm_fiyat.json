@@ -6,20 +6,20 @@
     "vendor": "Custom",
     "license": "",
     "id": "com.custom.usmfiyat",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "icon": "",
     "webcomponents": [
         {
             "kind": "main",
             "tag": "custom-usm-fiyat",
-            "url": "https://bizimniyan.github.io/sac-widgets/usm_fiyat.js?v=110",
+            "url": "https://bizimniyan.github.io/sac-widgets/usm_fiyat.js?v=120",
             "integrity": "",
             "ignoreIntegrity": true
         },
         {
             "kind": "builder",
             "tag": "custom-usm-fiyat-builder",
-            "url": "https://bizimniyan.github.io/sac-widgets/usm_fiyat_builder.js?v=110",
+            "url": "https://bizimniyan.github.io/sac-widgets/usm_fiyat_builder.js?v=120",
             "integrity": "",
             "ignoreIntegrity": true
         }
@@ -50,6 +50,10 @@
             "default": ""
         },
         "supplierFilter": {
+            "type": "string",
+            "default": ""
+        },
+        "currencyFilter": {
             "type": "string",
             "default": ""
         },
@@ -112,6 +116,21 @@
         },
         "getSupplierFilter": {
             "description": "Gecerli tedarikci filtresini dondurur",
+            "parameters": [],
+            "returnType": "string"
+        },
+        "setCurrencyFilter": {
+            "description": "Para birimi filtresi: USD;EUR (virgul de olur), bos metin = tumu",
+            "parameters": [
+                {
+                    "name": "values",
+                    "type": "string",
+                    "description": "orn. USD;EUR"
+                }
+            ]
+        },
+        "getCurrencyFilter": {
+            "description": "Secili para birimleri (; ile), bos = tumu",
             "parameters": [],
             "returnType": "string"
         },
