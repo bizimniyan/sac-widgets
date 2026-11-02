@@ -265,6 +265,8 @@
             .tabulator-row .tabulator-data-tree-control .tabulator-data-tree-control-collapse:after { background: #7a7a7a !important; }
             .tabulator-row .tabulator-data-tree-branch { border-color: #d6d6d6 !important; }
             .tabulator-row.leaf .tabulator-data-tree-branch { margin-right: 23px; }
+            /* Tabulator girintiyi branch offsetWidth ile hesaplıyor, satır DOM dışında çizilince 0 okuyup kayıyor: seviye başına sabit */
+            ${Array.from({ length: 30 }, (_, i) => `.tabulator-row.tabulator-tree-level-${i + 1} .tabulator-data-tree-branch { margin-left: ${9 * i + 22 * (i + 1)}px !important; }`).join("\n            ")}
             .tabulator .tabulator-tableholder .tabulator-range-overlay .tabulator-range,
             .tabulator .tabulator-tableholder .tabulator-range-overlay .tabulator-range-cell-active { border-color: #ff0000 !important; }
             .tabulator .tabulator-tableholder .tabulator-range-overlay .tabulator-range.tabulator-range-active::after { background-color: #ff0000 !important; }
