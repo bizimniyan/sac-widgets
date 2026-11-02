@@ -230,7 +230,7 @@
             .gpop .hits span { flex: 0 0 auto; color: #888; }
         </style>
         <div class="wrap">
-            <div class="bar"><div id="status">Yükleniyor…</div><button id="xls">Excel'e aktar</button></div>
+            <div class="bar"><button id="xls">Excel'e aktar</button><div id="status">Yükleniyor…</div></div>
             <div id="table"></div>
             <div id="pop" class="pop" hidden>
                 <div class="pop-h"><span id="popTitle">Malzeme seçimi</span><button class="x" id="popClose" title="Kapat">×</button></div>
@@ -659,11 +659,11 @@
             const columns = [
                 { title: "Malzeme", field: "mat", width: 190, frozen: true, titleFormatter: () => this._kodHeaderEl },
                 { title: "Açıklama", field: "desc", width: 260, frozen: true },
-                { title: "Grup 1", field: "g1", width: 120, cssClass: "soft", titleFormatter: () => this._gHeader[1].el },
-                { title: "Grup 2", field: "g2", width: 160, cssClass: "soft", titleFormatter: () => this._gHeader[2].el },
-                { title: "Tedarikçi", field: "sup", width: 160, titleFormatter: () => this._supHeaderEl },
-                { title: "Tedarikçi Adı", field: "supName", width: 220, cssClass: "soft" },
-                { title: "Para Birimi", field: "cur", width: 100, titleFormatter: () => this._gHeader.cur.el }
+                { title: "Grup 1", field: "g1", width: 120, frozen: true, cssClass: "soft", titleFormatter: () => this._gHeader[1].el },
+                { title: "Grup 2", field: "g2", width: 160, frozen: true, cssClass: "soft", titleFormatter: () => this._gHeader[2].el },
+                { title: "Tedarikçi", field: "sup", width: 160, frozen: true, titleFormatter: () => this._supHeaderEl },
+                { title: "Tedarikçi Adı", field: "supName", width: 220, frozen: true, cssClass: "soft" },
+                { title: "Para Birimi", field: "cur", width: 100, frozen: true, titleFormatter: () => this._gHeader.cur.el }
             ];
             const valueCol = (c, title, first) => ({
                 title, headerTooltip: `${c.param} ${fmtDate(c.date)}`, headerWordWrap: true, field: c.field, width: 105,

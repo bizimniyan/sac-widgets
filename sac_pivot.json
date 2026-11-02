@@ -6,20 +6,20 @@
     "vendor": "Custom",
     "license": "",
     "id": "com.custom.sacpivot",
-    "version": "1.8.0",
+    "version": "1.9.0",
     "icon": "",
     "webcomponents": [
         {
             "kind": "main",
             "tag": "custom-sac-pivot",
-            "url": "https://bizimniyan.github.io/sac-widgets/sac_pivot.js?v=180",
+            "url": "https://bizimniyan.github.io/sac-widgets/sac_pivot.js?v=190",
             "integrity": "",
             "ignoreIntegrity": true
         },
         {
             "kind": "builder",
             "tag": "custom-sac-pivot-builder",
-            "url": "https://bizimniyan.github.io/sac-widgets/sac_pivot_builder.js?v=180",
+            "url": "https://bizimniyan.github.io/sac-widgets/sac_pivot_builder.js?v=190",
             "integrity": "",
             "ignoreIntegrity": true
         }
@@ -28,7 +28,7 @@
         "width": { "type": "integer", "default": 1000 },
         "height": { "type": "integer", "default": 500 },
         "providerId": { "type": "string", "default": "Cgo60cs80hp2214495dtio17t3c" },
-        "rowDims": { "type": "string", "default": "ZMALZEME:Malzeme, ZTEDARIKCI:Tedarikçi, ZCURRENCY:Para Birimi" },
+        "rowDims": { "type": "string", "default": "ZMALZEME:Malzeme, ZMALZEME.MALZ_GRUP1:Grup 1, ZMALZEME.MALZ_GRUP2:Grup 2, ZTEDARIKCI:Tedarikçi, ZCURRENCY:Para Birimi" },
         "colDims": { "type": "string", "default": "ZPARAMETRE:Parametre, Date" },
         "filters": { "type": "string", "default": "ZPARAMETRE=USM0016,USM0017,USM0018,USM0003_T,USM0008" },
         "measures": { "type": "string", "default": "ZMIKTAR:Miktar,ZORAN:Oran" },

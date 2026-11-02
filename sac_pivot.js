@@ -248,7 +248,7 @@
             .pop-f .primary:hover { background: #ff3333; }
         </style>
         <div class="wrap">
-            <div class="bar"><label id="mSelWrap" hidden>Measure: <select id="mSel"></select></label><div id="status">Yükleniyor…</div><button id="xls">Excel'e aktar</button></div>
+            <div class="bar"><button id="xls">Excel'e aktar</button><label id="mSelWrap" hidden>Measure: <select id="mSel"></select></label><div id="status">Yükleniyor…</div></div>
             <div id="table"></div>
             <div id="pop" class="pop" hidden>
                 <div class="pop-h"><span id="popTitle"></span><button class="x" id="popClose" title="Kapat">×</button></div>
@@ -834,11 +834,11 @@
             p.rows.forEach((d, i) => {
                 const descOnly = DESC_ONLY.has(d.id) && this._desc.has(d.id);
                 columns.push({
-                    title: d.label, field: "r" + i, width: 150, frozen: i === 0, titleFormatter: () => this._buildHeader(i, d),
+                    title: d.label, field: "r" + i, width: 150, frozen: true, titleFormatter: () => this._buildHeader(i, d),
                     formatter: descOnly ? (cell) => cell.getData()[`r${i}d`] || cell.getValue() : undefined,
                     accessorClipboard: descOnly ? (v, data) => data[`r${i}d`] || v : textCopy
                 });
-                if (this._twoCols(d.id)) columns.push({ title: d.label + " Tanımı", field: `r${i}d`, width: 230, frozen: i === 0, cssClass: "soft" });
+                if (this._twoCols(d.id)) columns.push({ title: d.label + " Tanımı", field: `r${i}d`, width: 230, frozen: true, cssClass: "soft" });
             });
             const valueDefs = this._columnDefs(p);
             this._shown = this._filtered();
