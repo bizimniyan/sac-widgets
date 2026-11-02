@@ -1,0 +1,129 @@
+{
+    "name": "UsmFiyatWidget",
+    "description": "Malzeme x Tedarikci x Para birimi fiyat/oran tablosu",
+    "newInstancePrefix": "UsmFiyat",
+    "eula": "",
+    "vendor": "Custom",
+    "license": "",
+    "id": "com.custom.usmfiyat",
+    "version": "1.0.0",
+    "icon": "",
+    "webcomponents": [
+        {
+            "kind": "main",
+            "tag": "custom-usm-fiyat",
+            "url": "https://bizimniyan.github.io/sac-widgets/usm_fiyat.js?v=100",
+            "integrity": "",
+            "ignoreIntegrity": true
+        },
+        {
+            "kind": "builder",
+            "tag": "custom-usm-fiyat-builder",
+            "url": "https://bizimniyan.github.io/sac-widgets/usm_fiyat_builder.js?v=100",
+            "integrity": "",
+            "ignoreIntegrity": true
+        }
+    ],
+    "properties": {
+        "width": {
+            "type": "integer",
+            "default": 1000
+        },
+        "height": {
+            "type": "integer",
+            "default": 500
+        },
+        "providerId": {
+            "type": "string",
+            "default": "Cgo60cs80hp2214495dtio17t3c"
+        },
+        "version": {
+            "type": "string",
+            "default": "public.2027BUD_01"
+        },
+        "companyCode": {
+            "type": "string",
+            "default": ""
+        },
+        "materialFilter": {
+            "type": "string",
+            "default": ""
+        },
+        "parameters": {
+            "type": "string",
+            "default": "USM0010,USM0008,USM0009,USM0011"
+        },
+        "measures": {
+            "type": "string",
+            "default": "ZORAN,ZFIYAT"
+        }
+    },
+    "methods": {
+        "setVersion": {
+            "description": "Versiyonu degistirir ve veriyi yeniden yukler",
+            "parameters": [
+                {
+                    "name": "version",
+                    "type": "string",
+                    "description": "Versiyon ID, orn. public.2027BUD_01"
+                }
+            ],
+            "body": "this.version = version;"
+        },
+        "setCompanyCode": {
+            "description": "Sirket kodunu degistirir (bos = hepsi, virgulle coklu) ve veriyi yeniden yukler",
+            "parameters": [
+                {
+                    "name": "companyCode",
+                    "type": "string",
+                    "description": "Sirket kodu, orn. 1100"
+                }
+            ],
+            "body": "this.companyCode = companyCode;"
+        },
+        "setMaterialFilter": {
+            "description": "Malzeme filtresi: 11*, 11000001, 11000000-11009999; birden fazlasi ; ile",
+            "parameters": [
+                {
+                    "name": "filter",
+                    "type": "string",
+                    "description": "Filtre metni, bos = filtre yok"
+                }
+            ]
+        },
+        "getMaterialFilter": {
+            "description": "Gecerli malzeme filtresini dondurur",
+            "parameters": [],
+            "returnType": "string"
+        },
+        "setGroup1Filter": {
+            "description": "MALZ_GRUP1 filtresi: degerler ; ile, (boş) bos deger, bos metin = tumu",
+            "parameters": [
+                {
+                    "name": "values",
+                    "type": "string",
+                    "description": "orn. DİĞER;ENDÜSTRİYEL"
+                }
+            ]
+        },
+        "setGroup2Filter": {
+            "description": "MALZ_GRUP2 filtresi: degerler ; ile, (boş) bos deger, bos metin = tumu",
+            "parameters": [
+                {
+                    "name": "values",
+                    "type": "string",
+                    "description": "orn. DİĞER;ENDÜSTRİYEL"
+                }
+            ]
+        },
+        "exportExcel": {
+            "description": "Filtredeki satirlari Excel'e aktarir",
+            "parameters": []
+        },
+        "refresh": {
+            "description": "Veriyi yeniden yukler",
+            "parameters": []
+        }
+    },
+    "events": {}
+}
