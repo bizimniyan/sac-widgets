@@ -1,7 +1,7 @@
 (function () {
     const FIELDS = [
         { id: "providerId", label: "Model ProviderID", rows: 1 },
-        { id: "rowDims", label: "Satırlar (virgülle; ID:Başlık)", hint: "ZMALZEME:Malzeme, ZTEDARIKCI:Tedarikçi", rows: 2 },
+        { id: "rowDims", label: "Satırlar (virgülle; ID:Başlık; özellik BOYUT.ÖZELLİK)", hint: "ZMALZEME:Malzeme, ZMALZEME.MALZ_GRUP1:Grup 1", rows: 2 },
         { id: "colDims", label: "Sütunlar (virgülle; ID:Başlık, boş olabilir)", hint: "ZPARAMETRE:Parametre, Date", rows: 2 },
         { id: "filters", label: "Filtreler (BOYUT=değer,değer ; ile ayrılır)", hint: "Version=public.2027BUD_01; ZSIRKET_KODU=1100", rows: 4 },
         { id: "measures", label: "Measure (virgülle; ID:Başlık)", hint: "ZFIYAT:Fiyat", rows: 1 }

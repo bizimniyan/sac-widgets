@@ -1,11 +1,11 @@
 (function () {
     const TABULATOR_JS = "https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js";
     const FFLATE_JS = "https://unpkg.com/fflate@0.8.2/esm/browser.js";
-    const NO_DATE = "000000";
     const MAX_HITS = 200;
     const DATES_KEY = "sacPivotDates:";
-    const NO_MASTER = new Set(["Date", "Version"]);
+    const NO_MASTER = new Set(["Date", "Version", "ZCURRENCY"]);
     const DIM_LABEL = { Date: "Dönem", Version: "Versiyon" };
+    const DESC_ONLY = new Set(["ZPARAMETRE"]);
     const SEP = "\u0001";
     const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
@@ -98,7 +98,10 @@
     const parseItems = (text) => splitList(text).map(s => {
         const i = s.indexOf(":");
         const id = (i > 0 ? s.slice(0, i) : s).trim();
-        return { id, label: i > 0 ? s.slice(i + 1).trim() || id : DIM_LABEL[id] || id };
+        const dot = id.indexOf(".");
+        const base = dot > 0 ? id.slice(0, dot) : id;
+        const attr = dot > 0 ? id.slice(dot + 1) : "";
+        return { id, base, attr, label: i > 0 ? s.slice(i + 1).trim() || id : DIM_LABEL[id] || attr || id };
     });
     const normVal = (dim, v) => {
         const x = memberId(v);
@@ -115,7 +118,6 @@
         });
         return out;
     };
-    const fmtDate = (d) => d === NO_DATE ? "Dönemsiz" : /^\d{6}$/.test(d) ? `${d.slice(4)}.${d.slice(0, 4)}` : d;
     const nf = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 3 });
     const nfCopy = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 6, useGrouping: false });
     const numCopy = (v) => v === undefined || v === null ? "" : nfCopy.format(v);
@@ -201,6 +203,7 @@
             .tabulator-row .tabulator-cell.tabulator-range-selected:not(.tabulator-range-only-cell-selected) { background-color: #ffd9d9 !important; }
             .tabulator .tabulator-header .tabulator-col.tabulator-range-highlight, .tabulator .tabulator-header .tabulator-col.tabulator-range-selected { background: #ffecec !important; color: inherit !important; }
             .tabulator-row .tabulator-cell.dash { color: #cfcfcf; font-weight: 400; }
+            .tabulator-row .tabulator-cell.tot { font-weight: 600; }
             .kod-f { display: flex; gap: 3px; margin-top: 6px; }
             .kod-f input { flex: 1 1 auto; min-width: 0; font: 11px Arial, sans-serif; padding: 2px 4px; border: 1px solid #dadada; border-radius: 3px; color: #333; }
             .kod-f input.on { border-color: #ff0000; background: #ffe8e8; }
@@ -362,8 +365,16 @@
                 this._setStatus("Builder panelinden model, satır boyutları ve measure girin.");
                 return;
             }
-            const filter = Array.from(p.filters.entries()).map(([d, vals]) => orEq(d, vals)).join(" and ");
-            const dims = Array.from(new Set(p.rows.concat(p.cols).map(d => d.id)));
+            const filter = Array.from(p.filters.entries()).filter(([d]) => d.indexOf(".") < 0).map(([d, vals]) => orEq(d, vals)).join(" and ");
+            const attrFilters = parseItems(Array.from(p.filters.keys()).filter(d => d.indexOf(".") > 0).join(","));
+            const items = p.rows.concat(p.cols, attrFilters);
+            const dims = Array.from(new Set(items.map(d => d.base)));
+            const attrs = new Map();
+            items.forEach(d => {
+                if (!d.attr) return;
+                if (!attrs.has(d.base)) attrs.set(d.base, new Set());
+                attrs.get(d.base).add(d.attr);
+            });
             const mIds = p.measures.map(m => m.id);
             const t0 = Date.now();
             this._setStatus("Yükleniyor…");
@@ -383,7 +394,7 @@
                         dates = cached || await datesP;
                     }
                 }
-                const masterDims = dims.filter(d => !NO_MASTER.has(d));
+                const masterDims = dims.filter(d => !NO_MASTER.has(d) || attrs.has(d));
                 const sel = dims.concat(mIds).join(",");
                 let done = 0;
                 const total = dates.length + masterDims.length;
@@ -394,7 +405,8 @@
                 });
                 const [, masters, valueSets] = await Promise.all([
                     loadScript(TABULATOR_JS),
-                    Promise.all(masterDims.map(d => step(this._get(`${d}Master`, { $select: "ID,Description" }).catch(() => [])))),
+                    Promise.all(masterDims.map(d => step(this._get(`${d}Master`, { $select: ["ID", "Description"].concat(Array.from(attrs.get(d) || [])).join(",") })
+                        .catch(e => { if (attrs.has(d)) throw new Error(`${d} özellikleri okunamadı (${Array.from(attrs.get(d)).join(", ")}): ${errText(e)}`); return []; })))),
                     Promise.all(dates.map(d => step(this._get("FactDataAggregation", {
                         $select: sel,
                         $filter: d === null ? filter : and(filter, `Date eq '${q(d)}'`)
@@ -411,12 +423,14 @@
                     writeCache(p.sig, dates);
                 }
                 this._desc = new Map();
+                this._attrs = new Map();
                 masterDims.forEach((d, i) => {
                     const m = new Map();
                     masters[i].forEach(r => { if (r.Description) m.set(r.ID, r.Description); });
-                    if (m.size) this._desc.set(d, m);
+                    if (m.size && !NO_MASTER.has(d)) this._desc.set(d, m);
+                    if (attrs.has(d)) this._attrs.set(d, new Map(masters[i].map(r => [r.ID, r])));
                 });
-                this._buildData(p, valueSets);
+                this._buildData(p, valueSets, attrFilters);
                 if (!this._rows.length) {
                     this._destroyTable();
                     this._setStatus("Bu filtrelerle veri yok.");
@@ -434,13 +448,28 @@
 
         _label(dim, v) {
             const d = this._desc.get(dim);
-            return (d && d.get(v)) || (dim === "Date" ? fmtDate(v) : v);
+            const desc = d && d.get(v);
+            if (!v) return desc || "(boş)";
+            return !desc ? v : DESC_ONLY.has(dim) ? desc : `${v} - ${desc}`;
         }
 
-        _buildData(p, valueSets) {
+        _twoCols(dim) {
+            return this._desc.has(dim) && !DESC_ONLY.has(dim);
+        }
+
+        _valueOf(d, r) {
+            if (!d.attr) return String(r[d.id] === undefined || r[d.id] === null ? "" : r[d.id]);
+            const m = this._attrs.get(d.base);
+            const rec = m && m.get(r[d.base]);
+            const v = rec && rec[d.attr];
+            return v === undefined || v === null ? "" : String(v);
+        }
+
+        _buildData(p, valueSets, attrFilters) {
             const rowIds = p.rows.map(d => d.id);
-            const colIds = p.cols.map(d => d.id);
             const mIds = p.measures.map(m => m.id);
+            const af = attrFilters.map(d => [d, new Set(p.filters.get(d.id))]);
+            const withTotal = p.cols.length > 0;
             const byRow = new Map();
             const colIndex = new Map();
             const cols = [];
@@ -450,14 +479,15 @@
                     return x === null || x === undefined || x === "" ? null : Number(x);
                 });
                 if (nums.every(x => x === null)) return;
-                const cvals = colIds.map(d => String(r[d] === undefined || r[d] === null ? "" : r[d]));
+                for (let k = 0; k < af.length; k++) if (!af[k][1].has(this._valueOf(af[k][0], r))) return;
+                const cvals = p.cols.map(d => this._valueOf(d, r));
                 const ck = cvals.join(SEP);
                 let ci = colIndex.get(ck);
                 if (ci === undefined) {
                     colIndex.set(ck, ci = cols.length);
                     cols.push({ ci, vals: cvals });
                 }
-                const rvals = rowIds.map(d => String(r[d] === undefined || r[d] === null ? "" : r[d]));
+                const rvals = p.rows.map(d => this._valueOf(d, r));
                 const rk = rvals.join(SEP);
                 let row = byRow.get(rk);
                 if (!row) {
@@ -473,9 +503,10 @@
                     if (x === null) return;
                     const f = `v${ci}_${mi}`;
                     row[f] = (row[f] || 0) + x;
+                    if (withTotal) row["t_" + mi] = (row["t_" + mi] || 0) + x;
                 });
             }));
-            const orders = colIds.map(d => {
+            const orders = p.cols.map(d => d.id).map(d => {
                 const fixed = p.filters.get(d);
                 const pos = fixed ? new Map(fixed.map((v, i) => [v, i])) : null;
                 return (a, b) => {
@@ -537,8 +568,15 @@
                 });
             };
             const defs = this._cols.length ? build(this._cols, 0) : [];
+            if (nc && defs.length) {
+                const tot = ms.map((m, mi) => {
+                    this._leaves.splice(mi, 0, { field: "t_" + mi, title: ms.length > 1 ? `Toplam / ${m.label}` : "Toplam" });
+                    return { title: ms.length > 1 ? m.label : "Toplam", field: "t_" + mi, headerTooltip: "Satır toplamı", width: 115, hozAlign: "right", formatter: numFormatter, accessorClipboard: numCopy, cssClass: "tot" };
+                });
+                defs.unshift(ms.length > 1 ? { title: "Toplam", cssClass: "pgroup", columns: tot } : tot[0]);
+            }
             const firstLeaf = (c) => c.columns ? firstLeaf(c.columns[0]) : c;
-            defs.forEach(c => { firstLeaf(c).cssClass = "pstart"; });
+            defs.forEach(c => { const l = firstLeaf(c); l.cssClass = l.cssClass ? l.cssClass + " pstart" : "pstart"; });
             return defs;
         }
 
@@ -557,10 +595,10 @@
             const row = { key: "TOTAL", _total: true };
             this._rowDims.forEach((d, i) => {
                 row["r" + i] = "";
-                if (this._desc.has(d.id)) row[`r${i}d`] = "";
+                if (this._twoCols(d.id)) row[`r${i}d`] = "";
             });
             row.r0 = "Toplam";
-            if (this._desc.has(this._rowDims[0].id)) row.r0d = `${nf.format(shown.length)} satır`;
+            if (this._twoCols(this._rowDims[0].id)) row.r0d = `${nf.format(shown.length)} satır`;
             const fields = this._leaves.map(c => c.field);
             fields.forEach(f => { row[f] = null; });
             shown.forEach(r => {
@@ -585,12 +623,13 @@
             this._inputs = new Map();
             const columns = [];
             p.rows.forEach((d, i) => {
-                const isDate = d.id === "Date";
+                const descOnly = DESC_ONLY.has(d.id) && this._desc.has(d.id);
                 columns.push({
                     title: d.label, field: "r" + i, width: 150, frozen: i === 0, titleFormatter: () => this._buildHeader(i, d),
-                    formatter: isDate ? (cell) => cell.getData()._total ? cell.getValue() : fmtDate(cell.getValue()) : undefined
+                    formatter: descOnly ? (cell) => cell.getData()[`r${i}d`] || cell.getValue() : undefined,
+                    accessorClipboard: descOnly ? (v, data) => data[`r${i}d`] || v : textCopy
                 });
-                if (this._desc.has(d.id)) columns.push({ title: d.label + " Tanımı", field: `r${i}d`, width: 230, frozen: i === 0, cssClass: "soft" });
+                if (this._twoCols(d.id)) columns.push({ title: d.label + " Tanımı", field: `r${i}d`, width: 230, frozen: i === 0, cssClass: "soft" });
             });
             const valueDefs = this._columnDefs(p);
             this._shown = this._filtered();
@@ -651,7 +690,7 @@
                 const head = [];
                 dims.forEach(d => {
                     head.push(d.label);
-                    if (this._desc.has(d.id)) head.push(d.label + " Tanımı");
+                    if (this._twoCols(d.id)) head.push(d.label + " Tanımı");
                 });
                 const leaves = this._leaves;
                 leaves.forEach(c => head.push(c.title));
@@ -662,8 +701,8 @@
                     const r = rows[n];
                     const cells = [];
                     dims.forEach((d, i) => {
-                        cells.push(r["r" + i]);
-                        if (this._desc.has(d.id)) cells.push(r[`r${i}d`]);
+                        cells.push(DESC_ONLY.has(d.id) ? r[`r${i}d`] || r["r" + i] : r["r" + i]);
+                        if (this._twoCols(d.id)) cells.push(r[`r${i}d`]);
                     });
                     for (let k = 0; k < leaves.length; k++) {
                         const v = r[leaves[k].field];
@@ -818,7 +857,7 @@
         _popLabel(id) {
             const d = this._rowDims[this._popIdx];
             const desc = this._desc.get(d.id);
-            return desc ? desc.get(id) || "" : d.id === "Date" ? fmtDate(id) : "";
+            return desc ? desc.get(id) || "" : "";
         }
 
         _search() {
