@@ -8,6 +8,7 @@
     const DESC_ONLY = new Set(["ZPARAMETRE"]);
     const SCRIPT_ONLY = [["Version", "setVersion"], ["ZSIRKET_KODU", "setCompanyCode"]];
     const CUR_FREE = new Set(["ZORAN", "ZMIKTAR"]);
+    const SUP_PARAMS = new Set(["USM0008"]);
     const TUTAR_MEASURES = ["ZTUTAR", "ZTUTAR_EUR", "ZTUTAR_USD", "ZTUTAR_TRY"];
     const SEP = "\u0001";
     const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -522,7 +523,10 @@
             const colIndex = new Map();
             const cols = [];
             const curIdx = p.rows.findIndex(d => d.id === "ZCURRENCY");
-            const free = mIds.map(m => curIdx >= 0 && CUR_FREE.has(m));
+            const matIdx = p.rows.findIndex(d => d.id === "ZMALZEME");
+            const supOn = p.rows.some(d => d.id === "ZTEDARIKCI");
+            const free = mIds.map(m => CUR_FREE.has(m));
+            const isNone = (v) => v === "#" || v === "";
             const freeVals = [];
             const vUsed = new Set();
             this._vUsed = vUsed;
@@ -551,7 +555,7 @@
                 byRow.set(rk, row);
                 return row;
             };
-            const otherKey = (rvals) => rvals.map((v, i) => i === curIdx ? "" : v).join(SEP);
+            const keyOf = (rvals, wild) => rvals.map((v, i) => wild.indexOf(i) >= 0 ? "" : v).join(SEP);
             valueSets.forEach(recs => recs.forEach(r => {
                 const nums = mIds.map(m => {
                     const x = r[m];
@@ -567,13 +571,15 @@
                     cols.push({ ci, vals: cvals });
                 }
                 const rvals = p.rows.map(d => this._valueOf(d, r));
-                const noCur = curIdx >= 0 && (rvals[curIdx] === "#" || rvals[curIdx] === "");
+                const curWild = curIdx >= 0 && isNone(rvals[curIdx]) ? [curIdx] : [];
+                const supWild = supOn && SUP_PARAMS.has(r.ZPARAMETRE) ? [matIdx, curIdx].filter(i => i >= 0 && isNone(rvals[i])) : [];
                 const rk = rvals.join(SEP);
                 let row = null;
                 nums.forEach((x, mi) => {
                     if (x === null) return;
-                    if (noCur && free[mi]) {
-                        freeVals.push({ ok: otherKey(rvals), rk, rvals, ci, mi, x });
+                    const wild = supWild.length ? supWild : free[mi] ? curWild : [];
+                    if (wild.length) {
+                        freeVals.push({ wild, sup: supWild.length > 0, rk, rvals, ci, mi, x });
                         return;
                     }
                     if (!row) row = byRow.get(rk) || newRow(rk, rvals);
@@ -581,15 +587,22 @@
                 });
             }));
             if (freeVals.length) {
-                const groups = new Map();
-                byRow.forEach(row => {
-                    const ok = otherKey(rowIds.map((_, i) => row["r" + i]));
-                    if (!groups.has(ok)) groups.set(ok, []);
-                    groups.get(ok).push(row);
-                });
+                freeVals.sort((a, b) => a.sup - b.sup);
+                const caches = new Map();
                 freeVals.forEach(fv => {
-                    let targets = groups.get(fv.ok);
-                    if (!targets) groups.set(fv.ok, targets = [newRow(fv.rk, fv.rvals)]);
+                    const wk = fv.wild.join(",");
+                    let groups = caches.get(wk);
+                    if (!groups) {
+                        caches.set(wk, groups = new Map());
+                        byRow.forEach(row => {
+                            const ok = keyOf(rowIds.map((_, i) => row["r" + i]), fv.wild);
+                            if (!groups.has(ok)) groups.set(ok, []);
+                            groups.get(ok).push(row);
+                        });
+                    }
+                    const ok = keyOf(fv.rvals, fv.wild);
+                    let targets = groups.get(ok);
+                    if (!targets) groups.set(ok, targets = [byRow.get(fv.rk) || newRow(fv.rk, fv.rvals)]);
                     targets.forEach(row => add(row, fv.ci, fv.mi, fv.x));
                 });
             }
