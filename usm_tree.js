@@ -248,6 +248,8 @@
             .tabulator-row .tabulator-data-tree-control .tabulator-data-tree-control-collapse:after { background: #7a7a7a !important; }
             .tabulator-row .tabulator-data-tree-branch { border-color: #d6d6d6 !important; }
             .tabulator-row.leaf .tabulator-data-tree-branch { margin-right: 23px; }
+            /* Tabulator girintiyi branch offsetWidth ile hesaplıyor, satır DOM dışında çizilince 0 okuyup kayıyor: seviye başına sabit */
+            ${Array.from({ length: 30 }, (_, i) => `.tabulator-row.tabulator-tree-level-${i + 1} .tabulator-data-tree-branch { margin-left: ${9 * i + 22 * (i + 1)}px !important; }`).join("\n            ")}
             .tabulator .tabulator-tableholder .tabulator-range-overlay .tabulator-range,
             .tabulator .tabulator-tableholder .tabulator-range-overlay .tabulator-range-cell-active { border-color: #ff0000 !important; }
             .tabulator .tabulator-tableholder .tabulator-range-overlay .tabulator-range.tabulator-range-active::after { background-color: #ff0000 !important; }
@@ -452,11 +454,8 @@
         _setCompFilter(text, silent) {
             this._compFilter = splitList(text).join("; ");
             this._compMatch = matcher(this._compFilter);
-            const btn = this._compBtn;
-            const n = splitList(this._compFilter).length;
-            btn.textContent = "Bileşen: " + (!n ? "Tümü" : n === 1 ? this._compFilter : `${n} seçim`) + " ▾";
-            btn.title = this._compFilter;
-            btn.classList.toggle("on", n > 0);
+            this._compInput.value = this._compFilter;
+            this._compInput.classList.toggle("on", !!this._compFilter);
             if (!silent) this._refreshUsed();
         }
 
@@ -1111,10 +1110,17 @@
 
         _buildDescHeader() {
             const el = document.createElement("div");
-            el.innerHTML = `<div>Açıklama</div><div class="kod-f"><button class="gbtn"></button></div>`;
+            el.innerHTML = `<div>Açıklama</div><div class="kod-f"><input type="text" placeholder="Bileşen: 11*, 11000001-11009999"><button title="Bileşen çoklu seçim">⋯</button></div>`;
             const box = el.querySelector(".kod-f");
+            this._compInput = box.querySelector("input");
             this._compBtn = box.querySelector("button");
             stopEvents(box);
+            const apply = () => { if (splitList(this._compInput.value).join("; ") !== this._compFilter) this._setCompFilter(this._compInput.value); };
+            this._compInput.addEventListener("keydown", e => {
+                if (e.key === "Enter") apply();
+                if (e.key === "Escape") { this._compInput.value = this._compFilter; this._compInput.blur(); }
+            });
+            this._compInput.addEventListener("change", apply);
             this._compBtn.addEventListener("click", () => this._openPopup("ZBILESEN", this._compBtn));
             this._descHeaderEl = el;
             this._setCompFilter("", true);
@@ -1267,6 +1273,7 @@
             this._popDim = dim;
             this._gpop.hidden = true;
             this._kodInput.value = this._matFilter;
+            this._compInput.value = this._compFilter;
             this._root.getElementById("popTitle").textContent = comp ? "Bileşen seçimi" : "Malzeme seçimi";
             this._root.getElementById("popSearchLbl").textContent = comp ? "Bileşen ara" : "Malzeme ara";
             this._searchEl.placeholder = comp ? "örn. 11008335 veya RULMAN" : "örn. 2100253 veya DAVLUMBAZ";

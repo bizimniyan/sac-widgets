@@ -313,6 +313,7 @@
             .pop-f .primary:hover { background: #ff3333; }
             .kod-f .gbtn { flex: 1 1 auto; min-width: 0; text-align: left; padding: 1px 4px !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: normal; }
             .kod-f .gbtn.tbtn { flex: 0 0 auto; width: 84px; }
+            .kod-f .gbtn.mbtn { flex: 0 0 auto; width: 96px; }
             .kod-f .gbtn.on { border-color: #ff0000 !important; background: #ffe8e8 !important; }
             .gpop { width: 300px; }
             .gpop .hits b { flex: 1 1 auto; font-weight: normal; overflow: hidden; text-overflow: ellipsis; }
@@ -527,11 +528,8 @@
         _setCompFilter(text, silent) {
             this._compFilter = splitList(text).join("; ");
             this._compMatch = matcher(this._compFilter);
-            const btn = this._compBtn;
-            const n = splitList(this._compFilter).length;
-            btn.textContent = "Bileşen: " + (!n ? "Tümü" : n === 1 ? this._compFilter : `${n} seçim`) + " ▾";
-            btn.title = this._compFilter;
-            btn.classList.toggle("on", n > 0);
+            this._compInput.value = this._compFilter;
+            this._compInput.classList.toggle("on", !!this._compFilter);
             if (!silent) this._refreshUsed();
         }
 
@@ -1112,12 +1110,19 @@
 
         _buildDescHeader() {
             const el = document.createElement("div");
-            el.innerHTML = `<div>Açıklama</div><div class="kod-f"><button class="gbtn"></button><button class="gbtn"></button></div>`;
+            el.innerHTML = `<div>Açıklama</div><div class="kod-f"><input type="text" placeholder="Bileşen: 11*, 11000001-11009999"><button title="Bileşen çoklu seçim">⋯</button><button class="gbtn mbtn"></button></div>`;
             const box = el.querySelector(".kod-f");
-            const [compBtn, moBtn] = box.querySelectorAll("button");
-            this._compBtn = compBtn;
+            const moBtn = box.querySelector(".mbtn");
+            this._compInput = box.querySelector("input");
+            this._compBtn = box.querySelector("button");
             stopEvents(box);
-            compBtn.addEventListener("click", () => this._openPopup("ZBILESEN", compBtn));
+            const apply = () => { if (splitList(this._compInput.value).join("; ") !== this._compFilter) this._setCompFilter(this._compInput.value); };
+            this._compInput.addEventListener("keydown", e => {
+                if (e.key === "Enter") apply();
+                if (e.key === "Escape") { this._compInput.value = this._compFilter; this._compInput.blur(); }
+            });
+            this._compInput.addEventListener("change", apply);
+            this._compBtn.addEventListener("click", () => this._openPopup("ZBILESEN", this._compBtn));
             moBtn.addEventListener("click", () => this._openGroupPopup("O", moBtn));
             this._gHeader.O = { btn: moBtn, title: "Masraf öğesi" };
             this._descHeaderEl = el;
@@ -1275,6 +1280,7 @@
             this._popDim = dim;
             this._gpop.hidden = true;
             this._kodInput.value = this._matFilter;
+            this._compInput.value = this._compFilter;
             this._root.getElementById("popTitle").textContent = comp ? "Bileşen seçimi" : "Malzeme seçimi";
             this._root.getElementById("popSearchLbl").textContent = comp ? "Bileşen ara" : "Malzeme ara";
             this._searchEl.placeholder = comp ? "örn. 11008335 veya RULMAN" : "örn. 2100253 veya DAVLUMBAZ";
