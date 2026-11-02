@@ -1,0 +1,75 @@
+{
+    "name": "SacPivotWidget",
+    "description": "Satir/sutun/filtre/measure disaridan verilen pivot tablo",
+    "newInstancePrefix": "SacPivot",
+    "eula": "",
+    "vendor": "Custom",
+    "license": "",
+    "id": "com.custom.sacpivot",
+    "version": "1.0.0",
+    "icon": "",
+    "webcomponents": [
+        {
+            "kind": "main",
+            "tag": "custom-sac-pivot",
+            "url": "https://bizimniyan.github.io/sac-widgets/sac_pivot.js?v=100",
+            "integrity": "",
+            "ignoreIntegrity": true
+        },
+        {
+            "kind": "builder",
+            "tag": "custom-sac-pivot-builder",
+            "url": "https://bizimniyan.github.io/sac-widgets/sac_pivot_builder.js?v=100",
+            "integrity": "",
+            "ignoreIntegrity": true
+        }
+    ],
+    "properties": {
+        "width": { "type": "integer", "default": 1000 },
+        "height": { "type": "integer", "default": 500 },
+        "providerId": { "type": "string", "default": "Cgo60cs80hp2214495dtio17t3c" },
+        "rowDims": { "type": "string", "default": "ZMALZEME:Malzeme, ZTEDARIKCI:Tedarikçi, ZCURRENCY:Para Birimi" },
+        "colDims": { "type": "string", "default": "ZPARAMETRE:Parametre, Date" },
+        "filters": { "type": "string", "default": "Version=public.2027BUD_01; ZSIRKET_KODU=1100; ZPARAMETRE=USM0010,USM0011" },
+        "measures": { "type": "string", "default": "ZFIYAT:Fiyat" }
+    },
+    "methods": {
+        "setFilter": {
+            "description": "Sabit filtreyi degistirir ve veriyi yeniden yukler; bos deger = filtreyi kaldir",
+            "parameters": [
+                { "name": "dimension", "type": "string", "description": "Boyut ID, orn. Version, ZSIRKET_KODU" },
+                { "name": "values", "type": "string", "description": "Degerler virgulle, orn. 1100,1200" }
+            ]
+        },
+        "getFilter": {
+            "description": "Boyutun gecerli sabit filtre degerleri (virgulle)",
+            "parameters": [
+                { "name": "dimension", "type": "string", "description": "Boyut ID" }
+            ],
+            "returnType": "string"
+        },
+        "setSelection": {
+            "description": "Satir boyutu secim kutusu: 11*, 11000001, 11000000-11009999; birden fazlasi ; ile, bos = tumu",
+            "parameters": [
+                { "name": "dimension", "type": "string", "description": "Satir boyutu ID" },
+                { "name": "values", "type": "string", "description": "Secim metni" }
+            ]
+        },
+        "getSelection": {
+            "description": "Satir boyutunun gecerli secimi",
+            "parameters": [
+                { "name": "dimension", "type": "string", "description": "Satir boyutu ID" }
+            ],
+            "returnType": "string"
+        },
+        "exportExcel": {
+            "description": "Secime uyan satirlari Excel'e aktarir",
+            "parameters": []
+        },
+        "refresh": {
+            "description": "Veriyi yeniden yukler",
+            "parameters": []
+        }
+    },
+    "events": {}
+}
