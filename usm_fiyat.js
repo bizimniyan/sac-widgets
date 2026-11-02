@@ -225,12 +225,12 @@
             <div class="bar"><div id="status">Yükleniyor…</div><button id="xls">Excel'e aktar</button></div>
             <div id="table"></div>
             <div id="pop" class="pop" hidden>
-                <div class="pop-h"><span>Malzeme seçimi</span><button class="x" id="popClose" title="Kapat">×</button></div>
+                <div class="pop-h"><span id="popTitle">Malzeme seçimi</span><button class="x" id="popClose" title="Kapat">×</button></div>
                 <div class="pop-b">
                     <div class="pop-sec">Seçimler <small>(tek kod, 11* veya alt – üst aralık)</small></div>
                     <div id="selRows" class="sel-rows"></div>
                     <button id="addRow" class="link">+ satır</button>
-                    <div class="pop-sec">Malzeme ara <small>(kod veya tanım; işaretle = seçimlere ekle)</small></div>
+                    <div class="pop-sec"><span id="popSearchLbl">Malzeme ara</span> <small>(kod veya tanım; işaretle = seçimlere ekle)</small></div>
                     <input id="search" type="text" placeholder="örn. 1100253 veya RULMAN">
                     <div id="hits" class="hits"></div>
                     <div id="hitInfo" class="hit-info"></div>
@@ -268,6 +268,9 @@
             this._table = null;
             this._token = 0;
             this._matFilter = "";
+            this._supFilter = "";
+            this._supIds = [];
+            this._supDesc = new Map();
             this._rows = [];
             this._shown = [];
             this._allIds = [];
@@ -275,7 +278,8 @@
             this._matDesc = new Map();
             this._grp = { 1: null, 2: null };
             this._gHeader = {};
-            this._buildKodHeader();
+            this._kodHeaderEl = this._buildFilterHeader("mat");
+            this._supHeaderEl = this._buildFilterHeader("sup");
             this._buildGroupHeader(1, "Grup 1");
             this._buildGroupHeader(2, "Grup 2");
             this._initPopup();
@@ -287,9 +291,13 @@
                 this._matFilter = splitList(this.materialFilter).join("; ");
                 this._kodInput.value = this._matFilter;
             }
+            if ("supplierFilter" in changedProperties) {
+                this._supFilter = splitList(this.supplierFilter).join("; ");
+                this._supInput.value = this._supFilter;
+            }
             if (["providerId", "version", "companyCode", "parameters", "measures"].some(k => k in changedProperties)) {
                 this._scheduleReload();
-            } else if ("materialFilter" in changedProperties) {
+            } else if ("materialFilter" in changedProperties || "supplierFilter" in changedProperties) {
                 this._applyFilter();
             }
         }
@@ -299,13 +307,31 @@
         }
 
         setMaterialFilter(filter) {
-            this._matFilter = splitList(filter).join("; ");
-            this._kodInput.value = this._matFilter;
-            this._applyFilter();
+            this._setKindFilter("mat", filter);
         }
 
         getMaterialFilter() {
             return this._matFilter;
+        }
+
+        setSupplierFilter(filter) {
+            this._setKindFilter("sup", filter);
+        }
+
+        getSupplierFilter() {
+            return this._supFilter;
+        }
+
+        _setKindFilter(kind, text) {
+            const v = splitList(text).join("; ");
+            if (kind === "sup") {
+                this._supFilter = v;
+                this._supInput.value = v;
+            } else {
+                this._matFilter = v;
+                this._kodInput.value = v;
+            }
+            this._applyFilter();
         }
 
         setGroup1Filter(values) {
@@ -474,6 +500,7 @@
             this._rows = rows;
             this._allIds = Array.from(new Set(rows.map(r => r.mat)));
             this._allIndex = new Map(this._allIds.map((id, i) => [id, i]));
+            this._supIds = Array.from(new Set(rows.map(r => r.sup).filter(Boolean))).sort(cmpCode);
             this._valueCols = [];
             this._params.forEach(pr => {
                 const ds = Array.from(paramDates.get(pr)).sort();
@@ -485,10 +512,11 @@
 
         _filtered() {
             const m = matcher(this._matFilter);
+            const sm = matcher(this._supFilter);
             const g1 = this._grp[1];
             const g2 = this._grp[2];
-            if (!m && !g1 && !g2) return this._rows;
-            return this._rows.filter(r => (!m || m(r.mat)) && (!g1 || g1.has(r.g1)) && (!g2 || g2.has(r.g2)));
+            if (!m && !sm && !g1 && !g2) return this._rows;
+            return this._rows.filter(r => (!m || m(r.mat)) && (!sm || sm(r.sup)) && (!g1 || g1.has(r.g1)) && (!g2 || g2.has(r.g2)));
         }
 
         _totalRow() {
@@ -507,6 +535,7 @@
 
         _applyFilter() {
             this._kodInput.classList.toggle("on", !!this._matFilter);
+            this._supInput.classList.toggle("on", !!this._supFilter);
             if (!this._table) return;
             this._shown = this._filtered();
             this._table.replaceData([this._totalRow()].concat(this._shown));
@@ -521,7 +550,7 @@
                 { title: "Açıklama", field: "desc", width: 260, frozen: true },
                 { title: "Grup 1", field: "g1", width: 120, cssClass: "soft", titleFormatter: () => this._gHeader[1].el },
                 { title: "Grup 2", field: "g2", width: 160, cssClass: "soft", titleFormatter: () => this._gHeader[2].el },
-                { title: "Tedarikçi", field: "sup", width: 95 },
+                { title: "Tedarikçi", field: "sup", width: 160, titleFormatter: () => this._supHeaderEl },
                 { title: "Tedarikçi Adı", field: "supName", width: 220, cssClass: "soft" },
                 { title: "Para Birimi", field: "cur", width: 70 }
             ];
@@ -556,6 +585,7 @@
                 rowFormatter: (row) => { if (row.getData()._total) row.getElement().classList.add("row-total"); }
             });
             this._kodInput.classList.toggle("on", !!this._matFilter);
+            this._supInput.classList.toggle("on", !!this._supFilter);
         }
 
         async exportExcel() {
@@ -640,19 +670,23 @@
             return out;
         }
 
-        _buildKodHeader() {
+        _buildFilterHeader(kind) {
+            const sup = kind === "sup";
             const el = document.createElement("div");
-            el.innerHTML = `<div>Malzeme</div><div class="kod-f"><input type="text" placeholder="11*, 11000001-11000999"><button title="Çoklu seçim">⋯</button></div>`;
+            el.innerHTML = `<div>${sup ? "Tedarikçi" : "Malzeme"}</div><div class="kod-f"><input type="text" placeholder="${sup ? "200220, 2002*" : "11*, 11000001-11000999"}"><button title="Çoklu seçim">⋯</button></div>`;
             const box = el.querySelector(".kod-f");
-            this._kodInput = box.querySelector("input");
+            const input = box.querySelector("input");
+            const current = () => sup ? this._supFilter : this._matFilter;
+            if (sup) this._supInput = input;
+            else this._kodInput = input;
             stopEvents(box);
-            this._kodInput.addEventListener("keydown", e => {
-                if (e.key === "Enter") this.setMaterialFilter(this._kodInput.value);
-                if (e.key === "Escape") { this._kodInput.value = this._matFilter; this._kodInput.blur(); }
+            input.addEventListener("keydown", e => {
+                if (e.key === "Enter") this._setKindFilter(kind, input.value);
+                if (e.key === "Escape") { input.value = current(); input.blur(); }
             });
-            this._kodInput.addEventListener("change", () => this.setMaterialFilter(this._kodInput.value));
-            box.querySelector("button").addEventListener("click", () => this._openPopup());
-            this._kodHeaderEl = el;
+            input.addEventListener("change", () => this._setKindFilter(kind, input.value));
+            box.querySelector("button").addEventListener("click", () => this._openPopup(kind));
+            return el;
         }
 
         _buildGroupHeader(level, title) {
@@ -744,7 +778,7 @@
             $("popOk").addEventListener("click", () => {
                 this._readSelRows();
                 this._closePopup();
-                this.setMaterialFilter(this._sel.filter(s => s.low).map(tokenText).join("; "));
+                this._setKindFilter(this._popKind, this._sel.filter(s => s.low).map(tokenText).join("; "));
             });
             $("addRow").addEventListener("click", () => {
                 this._readSelRows();
@@ -770,11 +804,19 @@
             this._pop.addEventListener("keydown", (e) => { if (e.key === "Escape") this._closePopup(); });
         }
 
-        _openPopup() {
+        _openPopup(kind) {
+            const sup = kind === "sup";
+            this._popKind = kind;
             this._gpop.hidden = true;
             this._kodInput.value = this._matFilter;
-            this._pop.style.left = "";
-            this._sel = splitList(this._matFilter).map(parseToken);
+            this._supInput.value = this._supFilter;
+            this._root.getElementById("popTitle").textContent = sup ? "Tedarikçi seçimi" : "Malzeme seçimi";
+            this._root.getElementById("popSearchLbl").textContent = sup ? "Tedarikçi ara" : "Malzeme ara";
+            this._searchEl.placeholder = sup ? "örn. 200220 veya LIDA" : "örn. 1100253 veya RULMAN";
+            const wrap = this._root.querySelector(".wrap").getBoundingClientRect();
+            const btn = (sup ? this._supHeaderEl : this._kodHeaderEl).querySelector("button");
+            this._pop.style.left = Math.max(8, Math.min(btn.getBoundingClientRect().left - wrap.left - 200, wrap.width - 468)) + "px";
+            this._sel = splitList(sup ? this._supFilter : this._matFilter).map(parseToken);
             if (!this._sel.length) this._sel.push({ low: "", high: "" });
             this._renderSelRows();
             this._searchEl.value = "";
@@ -815,7 +857,10 @@
 
         _search() {
             const term = this._searchEl.value.trim();
-            const all = this._allIds;
+            const sup = this._popKind === "sup";
+            const all = sup ? this._supIds : this._allIds;
+            const desc = sup ? this._supDesc : this._matDesc;
+            const noun = sup ? "tedarikçi" : "malzeme";
             let hits;
             if (!term) {
                 hits = all.slice(0, MAX_HITS + 1);
@@ -825,15 +870,15 @@
                 hits = [];
                 for (let i = 0; i < all.length && hits.length <= MAX_HITS; i++) {
                     const id = all[i];
-                    if (m ? m(id) : id.indexOf(term) >= 0 || (this._matDesc.get(id) || "").toLocaleLowerCase("tr-TR").indexOf(lower) >= 0) hits.push(id);
+                    if (m ? m(id) : id.indexOf(term) >= 0 || (desc.get(id) || "").toLocaleLowerCase("tr-TR").indexOf(lower) >= 0) hits.push(id);
                 }
             }
             const more = hits.length > MAX_HITS;
             this._hits = hits.slice(0, MAX_HITS);
             this._renderHits();
             this._hitInfoEl.textContent = this._hits.length
-                ? `${this._hits.length} malzeme${more ? ` (ilk ${MAX_HITS} gösteriliyor, aramayı daraltın)` : ""}`
-                : "Eşleşen malzeme yok.";
+                ? `${this._hits.length} ${noun}${more ? ` (ilk ${MAX_HITS} gösteriliyor, aramayı daraltın)` : ""}`
+                : `Eşleşen ${noun} yok.`;
         }
 
         _renderHits() {
@@ -848,7 +893,7 @@
                 cb.value = id;
                 cb.checked = singles.has(id);
                 label.querySelector("b").textContent = id;
-                label.querySelector("span").textContent = this._matDesc.get(id) || "";
+                label.querySelector("span").textContent = (this._popKind === "sup" ? this._supDesc : this._matDesc).get(id) || "";
                 frag.appendChild(label);
             });
             this._hitsEl.appendChild(frag);

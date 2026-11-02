@@ -6,20 +6,20 @@
     "vendor": "Custom",
     "license": "",
     "id": "com.custom.usmfiyat",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "icon": "",
     "webcomponents": [
         {
             "kind": "main",
             "tag": "custom-usm-fiyat",
-            "url": "https://bizimniyan.github.io/sac-widgets/usm_fiyat.js?v=100",
+            "url": "https://bizimniyan.github.io/sac-widgets/usm_fiyat.js?v=110",
             "integrity": "",
             "ignoreIntegrity": true
         },
         {
             "kind": "builder",
             "tag": "custom-usm-fiyat-builder",
-            "url": "https://bizimniyan.github.io/sac-widgets/usm_fiyat_builder.js?v=100",
+            "url": "https://bizimniyan.github.io/sac-widgets/usm_fiyat_builder.js?v=110",
             "integrity": "",
             "ignoreIntegrity": true
         }
@@ -46,6 +46,10 @@
             "default": ""
         },
         "materialFilter": {
+            "type": "string",
+            "default": ""
+        },
+        "supplierFilter": {
             "type": "string",
             "default": ""
         },
@@ -93,6 +97,21 @@
         },
         "getMaterialFilter": {
             "description": "Gecerli malzeme filtresini dondurur",
+            "parameters": [],
+            "returnType": "string"
+        },
+        "setSupplierFilter": {
+            "description": "Tedarikci filtresi: 200220, 2002*, aralik; birden fazlasi ; ile",
+            "parameters": [
+                {
+                    "name": "filter",
+                    "type": "string",
+                    "description": "Filtre metni, bos = filtre yok"
+                }
+            ]
+        },
+        "getSupplierFilter": {
+            "description": "Gecerli tedarikci filtresini dondurur",
             "parameters": [],
             "returnType": "string"
         },
