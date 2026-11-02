@@ -487,6 +487,9 @@
             const mIds = p.measures.map(m => m.id);
             const af = attrFilters.map(d => [d, new Set(p.filters.get(d.id))]);
             const withTotal = p.cols.length > 0;
+            const pIdx = p.cols.length > 1 ? p.cols.findIndex(d => d.id === "ZPARAMETRE") : -1;
+            const tParams = new Map();
+            const tUsed = new Set();
             const byRow = new Map();
             const colIndex = new Map();
             const cols = [];
@@ -520,7 +523,15 @@
                     if (x === null) return;
                     const f = `v${ci}_${mi}`;
                     row[f] = (row[f] || 0) + x;
-                    if (withTotal) row["t_" + mi] = (row["t_" + mi] || 0) + x;
+                    if (!withTotal) return;
+                    let tf = "t_" + mi;
+                    if (pIdx >= 0) {
+                        let k = tParams.get(cvals[pIdx]);
+                        if (k === undefined) tParams.set(cvals[pIdx], k = tParams.size);
+                        tf = `t${k}_${mi}`;
+                        tUsed.add(tf);
+                    }
+                    row[tf] = (row[tf] || 0) + x;
                 });
             }));
             const orders = p.cols.map(d => d.id).map(d => {
@@ -541,6 +552,9 @@
                 }
                 return 0;
             });
+            this._totCols = !withTotal ? [] : pIdx < 0 ? mIds.map((m, mi) => ({ field: "t_" + mi, mi }))
+                : [].concat(...Array.from(tParams.keys()).sort(orders[pIdx]).map(pv => mIds.map((m, mi) => ({ field: `t${tParams.get(pv)}_${mi}`, mi, param: pv }))))
+                    .filter(t => tUsed.has(t.field));
             const rows = Array.from(byRow.values());
             rows.sort((a, b) => {
                 for (let i = 0; i < rowIds.length; i++) {
@@ -585,12 +599,15 @@
                 });
             };
             const defs = this._cols.length ? build(this._cols, 0) : [];
-            if (nc && defs.length) {
-                const tot = ms.map((m, mi) => {
-                    this._leaves.splice(mi, 0, { field: "t_" + mi, title: ms.length > 1 ? `Toplam / ${m.label}` : "Toplam" });
-                    return { title: ms.length > 1 ? m.label : "Toplam", field: "t_" + mi, headerTooltip: "Satır toplamı", width: 115, hozAlign: "right", formatter: numFormatter, accessorClipboard: numCopy, cssClass: "tot" };
+            if (nc && defs.length && this._totCols.length) {
+                const byParam = this._totCols[0].param !== undefined;
+                const tot = this._totCols.map(t => {
+                    const pl = byParam ? this._label("ZPARAMETRE", t.param) : "";
+                    const title = byParam ? (ms.length > 1 ? `${pl} ${ms[t.mi].label}` : pl) : ms.length > 1 ? ms[t.mi].label : "Toplam";
+                    return { title, field: t.field, headerTooltip: "Satır toplamı", headerWordWrap: true, width: 115, hozAlign: "right", formatter: numFormatter, accessorClipboard: numCopy, cssClass: "tot" };
                 });
-                defs.unshift(ms.length > 1 ? { title: "Toplam", cssClass: "pgroup", columns: tot } : tot[0]);
+                this._leaves.unshift(...tot.map(c => ({ field: c.field, title: c.title === "Toplam" ? c.title : `Toplam / ${c.title}` })));
+                defs.unshift(tot.length > 1 || byParam ? { title: "Toplam", cssClass: "pgroup", columns: tot } : tot[0]);
             }
             const firstLeaf = (c) => c.columns ? firstLeaf(c.columns[0]) : c;
             defs.forEach(c => { const l = firstLeaf(c); l.cssClass = l.cssClass ? l.cssClass + " pstart" : "pstart"; });
