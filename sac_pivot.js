@@ -6,6 +6,7 @@
     const NO_MASTER = new Set(["Date", "Version", "ZCURRENCY"]);
     const DIM_LABEL = { Date: "Dönem", Version: "Versiyon" };
     const DESC_ONLY = new Set(["ZPARAMETRE"]);
+    const SCRIPT_ONLY = [["Version", "setVersion"], ["ZSIRKET_KODU", "setCompanyCode"]];
     const SEP = "\u0001";
     const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
@@ -299,6 +300,14 @@
             this._scheduleReload();
         }
 
+        setVersion(version) {
+            this.setFilter("Version", version);
+        }
+
+        setCompanyCode(companyCode) {
+            this.setFilter("ZSIRKET_KODU", companyCode);
+        }
+
         getFilter(dimension) {
             return (this._loadParams().filters.get(String(dimension || "").trim()) || []).join(",");
         }
@@ -340,6 +349,7 @@
             const cols = parseItems(this.colDims);
             const measures = parseItems(this.measures);
             const filters = parseFilters(this.filters);
+            SCRIPT_ONLY.forEach(([d]) => filters.delete(d));
             this._override.forEach((vals, dim) => { if (vals.length) filters.set(dim, vals); else filters.delete(dim); });
             const fl = Array.from(filters.entries()).sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
             const sig = JSON.stringify([pid, rows, cols, measures, fl]);
@@ -363,6 +373,13 @@
             if (!p.pid || !p.rows.length || !p.measures.length) {
                 this._destroyTable();
                 this._setStatus("Builder panelinden model, satır boyutları ve measure girin.");
+                return;
+            }
+            const missing = SCRIPT_ONLY.filter(([d]) => !this._override.has(d)).map(([, m]) => m);
+            if (missing.length) {
+                this._destroyTable();
+                this._loadSig = null;
+                this._setStatus(`Script ile verilmesi bekleniyor: ${missing.join(", ")}`);
                 return;
             }
             const filter = Array.from(p.filters.entries()).filter(([d]) => d.indexOf(".") < 0).map(([d, vals]) => orEq(d, vals)).join(" and ");
