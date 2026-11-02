@@ -659,11 +659,11 @@
             const columns = [
                 { title: "Malzeme", field: "mat", width: 190, frozen: true, titleFormatter: () => this._kodHeaderEl },
                 { title: "Açıklama", field: "desc", width: 260, frozen: true },
-                { title: "Grup 1", field: "g1", width: 120, frozen: true, cssClass: "soft", titleFormatter: () => this._gHeader[1].el },
-                { title: "Grup 2", field: "g2", width: 160, frozen: true, cssClass: "soft", titleFormatter: () => this._gHeader[2].el },
-                { title: "Tedarikçi", field: "sup", width: 160, frozen: true, titleFormatter: () => this._supHeaderEl },
-                { title: "Tedarikçi Adı", field: "supName", width: 220, frozen: true, cssClass: "soft" },
-                { title: "Para Birimi", field: "cur", width: 100, frozen: true, titleFormatter: () => this._gHeader.cur.el }
+                { title: "Grup 1", field: "g1", width: 120, cssClass: "soft", titleFormatter: () => this._gHeader[1].el },
+                { title: "Grup 2", field: "g2", width: 160, cssClass: "soft", titleFormatter: () => this._gHeader[2].el },
+                { title: "Tedarikçi", field: "sup", width: 160, titleFormatter: () => this._supHeaderEl },
+                { title: "Tedarikçi Adı", field: "supName", width: 220, cssClass: "soft" },
+                { title: "Para Birimi", field: "cur", width: 100, titleFormatter: () => this._gHeader.cur.el }
             ];
             const valueCol = (c, title, first) => ({
                 title, headerTooltip: `${c.param} ${fmtDate(c.date)}`, headerWordWrap: true, field: c.field, width: 105,

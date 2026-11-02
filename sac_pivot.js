@@ -301,6 +301,7 @@
 
         onCustomWidgetAfterUpdate(changedProperties) {
             if (["providerId", "rowDims", "colDims", "filters", "measures", "measureSelect"].some(k => k in changedProperties)) this._scheduleReload();
+            else if ("freezeCols" in changedProperties && this._table) this._buildTable(this._p);
         }
 
         onCustomWidgetResize() {
@@ -835,12 +836,15 @@
             p.rows.forEach((d, i) => {
                 const descOnly = DESC_ONLY.has(d.id) && this._desc.has(d.id);
                 columns.push({
-                    title: d.label, field: "r" + i, width: 150, frozen: true, titleFormatter: () => this._buildHeader(i, d),
+                    title: d.label, field: "r" + i, width: 150, titleFormatter: () => this._buildHeader(i, d),
                     formatter: descOnly ? (cell) => cell.getData()[`r${i}d`] || cell.getValue() : undefined,
                     accessorClipboard: descOnly ? (v, data) => data[`r${i}d`] || v : textCopy
                 });
-                if (this._twoCols(d.id)) columns.push({ title: d.label + " Tanımı", field: `r${i}d`, width: 230, frozen: true, cssClass: "soft" });
+                if (this._twoCols(d.id)) columns.push({ title: d.label + " Tanımı", field: `r${i}d`, width: 230, cssClass: "soft" });
             });
+            const fz = parseInt(this.freezeCols, 10);
+            const first = this._twoCols(p.rows[0].id) ? 2 : 1;
+            columns.forEach((c, k) => { c.frozen = k < (fz > 0 ? fz : first); });
             const valueDefs = this._columnDefs(p);
             this._shown = this._filtered();
             this._table = new window.Tabulator(this._tableEl, {

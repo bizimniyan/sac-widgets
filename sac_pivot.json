@@ -6,20 +6,20 @@
     "vendor": "Custom",
     "license": "",
     "id": "com.custom.sacpivot",
-    "version": "1.9.1",
+    "version": "1.10.0",
     "icon": "",
     "webcomponents": [
         {
             "kind": "main",
             "tag": "custom-sac-pivot",
-            "url": "https://bizimniyan.github.io/sac-widgets/sac_pivot.js?v=191",
+            "url": "https://bizimniyan.github.io/sac-widgets/sac_pivot.js?v=1100",
             "integrity": "",
             "ignoreIntegrity": true
         },
         {
             "kind": "builder",
             "tag": "custom-sac-pivot-builder",
-            "url": "https://bizimniyan.github.io/sac-widgets/sac_pivot_builder.js?v=191",
+            "url": "https://bizimniyan.github.io/sac-widgets/sac_pivot_builder.js?v=1100",
             "integrity": "",
             "ignoreIntegrity": true
         }
@@ -32,7 +32,8 @@
         "colDims": { "type": "string", "default": "ZPARAMETRE:Parametre, Date" },
         "filters": { "type": "string", "default": "ZPARAMETRE=USM0016,USM0017,USM0018,USM0003_T,USM0008" },
         "measures": { "type": "string", "default": "ZMIKTAR:Miktar,ZORAN:Oran" },
-        "measureSelect": { "type": "string", "default": "x" }
+        "measureSelect": { "type": "string", "default": "x" },
+        "freezeCols": { "type": "string", "default": "5" }
     },
     "methods": {
         "setVersion": {
