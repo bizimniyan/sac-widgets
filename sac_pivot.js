@@ -7,7 +7,8 @@
     const DIM_LABEL = { Date: "Dönem", Version: "Versiyon" };
     const DESC_ONLY = new Set(["ZPARAMETRE"]);
     const SCRIPT_ONLY = [["Version", "setVersion"], ["ZSIRKET_KODU", "setCompanyCode"]];
-    const TUTAR_MEASURES = ["ZTUTAR", "ZTUTAR_EUR", "ZTUTAR_USD"];
+    const CUR_FREE = new Set(["ZORAN", "ZMIKTAR"]);
+    const TUTAR_MEASURES = ["ZTUTAR", "ZTUTAR_EUR", "ZTUTAR_USD", "ZTUTAR_TRY"];
     const SEP = "\u0001";
     const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
@@ -519,6 +520,34 @@
             const byRow = new Map();
             const colIndex = new Map();
             const cols = [];
+            const curIdx = p.rows.findIndex(d => d.id === "ZCURRENCY");
+            const free = mIds.map(m => curIdx >= 0 && CUR_FREE.has(m));
+            const freeVals = [];
+            const add = (row, ci, mi, x) => {
+                const f = `v${ci}_${mi}`;
+                row[f] = (row[f] || 0) + x;
+                if (!withTotal) return;
+                let tf = "t_" + mi;
+                if (pIdx >= 0) {
+                    const pv = cols[ci].vals[pIdx];
+                    let k = tParams.get(pv);
+                    if (k === undefined) tParams.set(pv, k = tParams.size);
+                    tf = `t${k}_${mi}`;
+                    tUsed.add(tf);
+                }
+                row[tf] = (row[tf] || 0) + x;
+            };
+            const newRow = (rk, rvals) => {
+                const row = { key: rk };
+                rvals.forEach((v, i) => {
+                    row["r" + i] = v;
+                    const d = this._desc.get(rowIds[i]);
+                    if (d) row[`r${i}d`] = d.get(v) || "";
+                });
+                byRow.set(rk, row);
+                return row;
+            };
+            const otherKey = (rvals) => rvals.map((v, i) => i === curIdx ? "" : v).join(SEP);
             valueSets.forEach(recs => recs.forEach(r => {
                 const nums = mIds.map(m => {
                     const x = r[m];
@@ -534,32 +563,32 @@
                     cols.push({ ci, vals: cvals });
                 }
                 const rvals = p.rows.map(d => this._valueOf(d, r));
+                const noCur = curIdx >= 0 && (rvals[curIdx] === "#" || rvals[curIdx] === "");
                 const rk = rvals.join(SEP);
-                let row = byRow.get(rk);
-                if (!row) {
-                    row = { key: rk };
-                    rvals.forEach((v, i) => {
-                        row["r" + i] = v;
-                        const d = this._desc.get(rowIds[i]);
-                        if (d) row[`r${i}d`] = d.get(v) || "";
-                    });
-                    byRow.set(rk, row);
-                }
+                let row = null;
                 nums.forEach((x, mi) => {
                     if (x === null) return;
-                    const f = `v${ci}_${mi}`;
-                    row[f] = (row[f] || 0) + x;
-                    if (!withTotal) return;
-                    let tf = "t_" + mi;
-                    if (pIdx >= 0) {
-                        let k = tParams.get(cvals[pIdx]);
-                        if (k === undefined) tParams.set(cvals[pIdx], k = tParams.size);
-                        tf = `t${k}_${mi}`;
-                        tUsed.add(tf);
+                    if (noCur && free[mi]) {
+                        freeVals.push({ ok: otherKey(rvals), rk, rvals, ci, mi, x });
+                        return;
                     }
-                    row[tf] = (row[tf] || 0) + x;
+                    if (!row) row = byRow.get(rk) || newRow(rk, rvals);
+                    add(row, ci, mi, x);
                 });
             }));
+            if (freeVals.length) {
+                const groups = new Map();
+                byRow.forEach(row => {
+                    const ok = otherKey(rowIds.map((_, i) => row["r" + i]));
+                    if (!groups.has(ok)) groups.set(ok, []);
+                    groups.get(ok).push(row);
+                });
+                freeVals.forEach(fv => {
+                    let targets = groups.get(fv.ok);
+                    if (!targets) groups.set(fv.ok, targets = [newRow(fv.rk, fv.rvals)]);
+                    targets.forEach(row => add(row, fv.ci, fv.mi, fv.x));
+                });
+            }
             const orders = p.cols.map(d => d.id).map(d => {
                 const fixed = p.filters.get(d);
                 const pos = fixed ? new Map(fixed.map((v, i) => [v, i])) : null;
