@@ -1,0 +1,100 @@
+{
+    "name": "SacCalcPivotWidget",
+    "description": "SacPivot + SAC calculated measure formulleri (Karlilik Modeli R_/C_ measure'lari)",
+    "newInstancePrefix": "SacCalcPivot",
+    "eula": "",
+    "vendor": "Custom",
+    "license": "",
+    "id": "com.custom.saccalcpivot",
+    "version": "1.0.0",
+    "icon": "",
+    "webcomponents": [
+        {
+            "kind": "main",
+            "tag": "custom-sac-calc-pivot",
+            "url": "https://bizimniyan.github.io/sac-widgets/sac_calc_pivot.js?v=100",
+            "integrity": "",
+            "ignoreIntegrity": true
+        },
+        {
+            "kind": "builder",
+            "tag": "custom-sac-calc-pivot-builder",
+            "url": "https://bizimniyan.github.io/sac-widgets/sac_calc_pivot_builder.js?v=100",
+            "integrity": "",
+            "ignoreIntegrity": true
+        }
+    ],
+    "properties": {
+        "width": { "type": "integer", "default": 1000 },
+        "height": { "type": "integer", "default": 500 },
+        "providerId": { "type": "string", "default": "Cdjpd2dklat44118tp1e6sekg54" },
+        "rowDims": { "type": "string", "default": "ZMUSTERI:Müşteri" },
+        "colDims": { "type": "string", "default": "Date" },
+        "filters": { "type": "string", "default": "" },
+        "measures": { "type": "string", "default": "R_CIRO, C_SMM, C_BRUT_KAR, C_BRUT_KAR_CIRO_PCT, C_NET_KAR" },
+        "measureSelect": { "type": "string", "default": "" },
+        "freezeCols": { "type": "string", "default": "2" }
+    },
+    "methods": {
+        "setVersion": {
+            "description": "Versiyonu verir ve veriyi yukler (zorunlu; verilmeden veri cekilmez)",
+            "parameters": [
+                { "name": "version", "type": "string", "description": "Versiyon ID, orn. public.2027BUD_01" }
+            ]
+        },
+        "setCompanyCode": {
+            "description": "Sirket kodunu verir ve veriyi yukler (zorunlu; bos = hepsi, virgulle coklu)",
+            "parameters": [
+                { "name": "companyCode", "type": "string", "description": "Sirket kodu, orn. 1100" }
+            ]
+        },
+        "setFilter": {
+            "description": "Sabit filtreyi degistirir ve veriyi yeniden yukler; bos deger = filtreyi kaldir",
+            "parameters": [
+                { "name": "dimension", "type": "string", "description": "Boyut ID, orn. Version, ZSIRKET_KODU" },
+                { "name": "values", "type": "string", "description": "Degerler virgulle, orn. 1100,1200" }
+            ]
+        },
+        "setMeasureSelection": {
+            "description": "Measure secimli acikken gosterilecek tutar: ZTUTAR, ZTUTAR_EUR, ZTUTAR_USD, ZTUTAR_TRY",
+            "parameters": [
+                { "name": "measure", "type": "string", "description": "orn. ZTUTAR_EUR" }
+            ]
+        },
+        "getMeasureSelection": {
+            "description": "Secili tutar measure'i",
+            "parameters": [],
+            "returnType": "string"
+        },
+        "getFilter": {
+            "description": "Boyutun gecerli sabit filtre degerleri (virgulle)",
+            "parameters": [
+                { "name": "dimension", "type": "string", "description": "Boyut ID" }
+            ],
+            "returnType": "string"
+        },
+        "setSelection": {
+            "description": "Satir boyutu secim kutusu: 11*, 11000001, 11000000-11009999; birden fazlasi ; ile, bos = tumu",
+            "parameters": [
+                { "name": "dimension", "type": "string", "description": "Satir boyutu ID" },
+                { "name": "values", "type": "string", "description": "Secim metni" }
+            ]
+        },
+        "getSelection": {
+            "description": "Satir boyutunun gecerli secimi",
+            "parameters": [
+                { "name": "dimension", "type": "string", "description": "Satir boyutu ID" }
+            ],
+            "returnType": "string"
+        },
+        "exportExcel": {
+            "description": "Secime uyan satirlari Excel'e aktarir",
+            "parameters": []
+        },
+        "refresh": {
+            "description": "Veriyi yeniden yukler",
+            "parameters": []
+        }
+    },
+    "events": {}
+}
