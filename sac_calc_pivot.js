@@ -8,7 +8,7 @@
     const SCRIPT_ONLY = [["Version", "setVersion"], ["ZSIRKET_KODU", "setCompanyCode"]];
     const CUR_FREE = new Set(["ZORAN", "ZMIKTAR"]);
     const SUP_PARAMS = new Set(["USM0008"]);
-    const TUTAR_MEASURES = ["ZTUTAR", "ZTUTAR_EUR", "ZTUTAR_USD", "ZTUTAR_TRY"];
+    const TUTAR_MEASURES = ["ZTUTAR_EUR", "ZTUTAR_TRY", "ZTUTAR_USD"];
     const SEP = "\u0001";
     const BLOCK = 200;
     const ROW_H = 26;
@@ -304,14 +304,15 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
         const c = CALC.get(id);
         return !!c && (/_PCT$/.test(id) || /\(%\)/.test(c.desc));
     };
-    const planMeasures = (measures) => {
+    const planMeasures = (measures, tutar) => {
         const atoms = [];
         const idx = new Map();
         const atomOf = (name) => {
             if (!idx.has(name)) {
                 const c = CALC.get(name);
                 idx.set(name, atoms.length);
-                atoms.push(c && c.base ? { id: name, base: c.base, dim: c.dim, val: c.val } : { id: name, base: name });
+                const base = c && c.base && tutar && TUTAR_MEASURES.indexOf(c.base) >= 0 ? tutar : c && c.base;
+                atoms.push(base ? { id: name, base, dim: c.dim, val: c.val } : { id: name, base: name });
             }
             return idx.get(name);
         };
@@ -558,16 +559,14 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
             const measures = parseItems(this.measures);
             const tutarOn = !!String(this.measureSelect || "").trim();
             this._mSelWrap.hidden = !tutarOn;
-            if (tutarOn && !measures.some(m => m.id === this._tutar)) {
-                measures.push({ id: this._tutar, base: this._tutar, attr: "", label: this._tutar });
-            }
             measures.forEach(m => { if (m.label === m.id && CALC.has(m.id)) m.label = CALC.get(m.id).desc || m.id; });
             const filters = parseFilters(this.filters);
             SCRIPT_ONLY.forEach(([d]) => filters.delete(d));
             this._override.forEach((vals, dim) => { if (vals.length) filters.set(dim, vals); else filters.delete(dim); });
             const fl = Array.from(filters.entries()).sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
-            const sig = JSON.stringify([pid, rows, cols, measures, fl]);
-            return { pid, rows, cols, measures, filters, sig };
+            const tutar = tutarOn ? this._tutar : null;
+            const sig = JSON.stringify([pid, rows, cols, measures, fl, tutar]);
+            return { pid, rows, cols, measures, filters, tutar, sig };
         }
 
         _reload(force) {
@@ -602,7 +601,7 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
             }
             let plan;
             try {
-                plan = planMeasures(p.measures);
+                plan = planMeasures(p.measures, p.tutar);
             } catch (e) {
                 this._destroyTable();
                 this._setStatus(errText(e), true);

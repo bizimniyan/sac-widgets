@@ -5,7 +5,7 @@
         { id: "colDims", label: "Sütunlar (virgülle; ID:Başlık, boş olabilir)", hint: "ZPARAMETRE:Parametre, Date", rows: 2 },
         { id: "filters", label: "Filtreler (BOYUT=değer,değer ; ile ayrılır; Version ve şirket kodu script ile)", hint: "ZPARAMETRE=USM0010,USM0011", rows: 4 },
         { id: "measures", label: "Measure (virgülle; ID:Başlık; R_/C_ hesaplı measure'lar dahil)", hint: "R_CIRO, C_BRUT_KAR, C_BRUT_KAR_CIRO_PCT", rows: 3 },
-        { id: "measureSelect", label: "Measure seçimli (x = ekranda ZTUTAR / _EUR / _USD / _TRY seçimi)", hint: "x", rows: 1 },
+        { id: "measureSelect", label: "Para birimi seçimli (x = ekranda ZTUTAR_EUR / _TRY / _USD seçimi; formüllerdeki ZTUTAR_EUR yerine geçer)", hint: "x", rows: 1 },
         { id: "freezeCols", label: "Donuk kolon sayısı (soldan, tanım kolonları dahil; boş = ilk boyut)", hint: "5", rows: 1 }
     ];
 

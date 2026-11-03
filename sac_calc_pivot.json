@@ -6,20 +6,20 @@
     "vendor": "Custom",
     "license": "",
     "id": "com.custom.saccalcpivot",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "icon": "",
     "webcomponents": [
         {
             "kind": "main",
             "tag": "custom-sac-calc-pivot",
-            "url": "https://bizimniyan.github.io/sac-widgets/sac_calc_pivot.js?v=100",
+            "url": "https://bizimniyan.github.io/sac-widgets/sac_calc_pivot.js?v=110",
             "integrity": "",
             "ignoreIntegrity": true
         },
         {
             "kind": "builder",
             "tag": "custom-sac-calc-pivot-builder",
-            "url": "https://bizimniyan.github.io/sac-widgets/sac_calc_pivot_builder.js?v=100",
+            "url": "https://bizimniyan.github.io/sac-widgets/sac_calc_pivot_builder.js?v=110",
             "integrity": "",
             "ignoreIntegrity": true
         }
@@ -32,7 +32,7 @@
         "colDims": { "type": "string", "default": "Date" },
         "filters": { "type": "string", "default": "" },
         "measures": { "type": "string", "default": "R_CIRO, C_SMM, C_BRUT_KAR, C_BRUT_KAR_CIRO_PCT, C_NET_KAR" },
-        "measureSelect": { "type": "string", "default": "" },
+        "measureSelect": { "type": "string", "default": "x" },
         "freezeCols": { "type": "string", "default": "2" }
     },
     "methods": {
@@ -56,7 +56,7 @@
             ]
         },
         "setMeasureSelection": {
-            "description": "Measure secimli acikken gosterilecek tutar: ZTUTAR, ZTUTAR_EUR, ZTUTAR_USD, ZTUTAR_TRY",
+            "description": "Measure secimli acikken formullerde kullanilacak tutar: ZTUTAR_EUR, ZTUTAR_TRY, ZTUTAR_USD",
             "parameters": [
                 { "name": "measure", "type": "string", "description": "orn. ZTUTAR_EUR" }
             ]
