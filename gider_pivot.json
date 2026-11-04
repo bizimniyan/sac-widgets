@@ -6,20 +6,20 @@
     "vendor": "Custom",
     "license": "",
     "id": "com.custom.giderpivot",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "icon": "",
     "webcomponents": [
         {
             "kind": "main",
             "tag": "custom-gider-pivot",
-            "url": "https://bizimniyan.github.io/sac-widgets/gider_pivot.js?v=100",
+            "url": "https://bizimniyan.github.io/sac-widgets/gider_pivot.js?v=101",
             "integrity": "",
             "ignoreIntegrity": true
         },
         {
             "kind": "builder",
             "tag": "custom-gider-pivot-builder",
-            "url": "https://bizimniyan.github.io/sac-widgets/gider_pivot_builder.js?v=100",
+            "url": "https://bizimniyan.github.io/sac-widgets/gider_pivot_builder.js?v=101",
             "integrity": "",
             "ignoreIntegrity": true
         }
@@ -30,7 +30,7 @@
         "providerId": { "type": "string", "default": "C206aen5clh2sh7ml7jvoco615" },
         "rowDims": { "type": "string", "default": "ZMASRAF_YERI:Masraf Yeri, ZMASRAF_CESIDI:Masraf Çeşidi, ZMASRAF_CESIDI.UST_GRUP:Üst Grup, ZMASRAF_CESIDI.ZBUTCE_KODU:Bütçe Kodu, ZMASRAF_CESIDI.ZBUTCE_KODU_TANIM:Bütçe Kodu Tanımı, ZMASRAF_CESIDI.ZAKTIVITE:3lüKod, ZPYP_KODU:PYP Kodu, ZPARAMETRE:Parametre, ZCURRENCY:Para Birimi" },
         "colDims": { "type": "string", "default": "Date" },
-        "filters": { "type": "string", "default": "" },
+        "filters": { "type": "string", "default": "ZPARAMETRE=GDR0001,GDR0002,GDR0003,GDR0004,GDR0005" },
         "measures": { "type": "string", "default": "" },
         "measureSelect": { "type": "string", "default": "x" },
         "freezeCols": { "type": "string", "default": "4" }

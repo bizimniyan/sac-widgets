@@ -3,7 +3,7 @@
         { id: "providerId", label: "Model ProviderID", rows: 1 },
         { id: "rowDims", label: "Satırlar (virgülle; ID:Başlık; özellik BOYUT.ÖZELLİK)", hint: "ZMASRAF_YERI:Masraf Yeri, ZMASRAF_CESIDI.UST_GRUP:Üst Grup", rows: 2 },
         { id: "colDims", label: "Sütunlar (virgülle; ID:Başlık, boş olabilir)", hint: "Date", rows: 2 },
-        { id: "filters", label: "Filtreler (BOYUT=değer,değer ; ile ayrılır; Version ve şirket kodu script ile)", hint: "ZPARAMETRE=GDR001,GDR002", rows: 4 },
+        { id: "filters", label: "Filtreler (BOYUT=değer,değer ; ile ayrılır; Version ve şirket kodu script ile)", hint: "ZPARAMETRE=GDR0001,GDR0002", rows: 4 },
         { id: "measures", label: "Measure (virgülle; ID:Başlık)", hint: "ZMIKTAR:Miktar", rows: 1 },
         { id: "measureSelect", label: "Measure seçimli (x = ekranda ZTUTAR / _TRY / _EUR / _USD seçimi)", hint: "x", rows: 1 },
         { id: "freezeCols", label: "Donuk kolon sayısı (soldan, tanım kolonları dahil; boş = ilk boyut)", hint: "5", rows: 1 }
