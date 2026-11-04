@@ -6,20 +6,20 @@
     "vendor": "Custom",
     "license": "",
     "id": "com.custom.dagitimpivot",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "icon": "",
     "webcomponents": [
         {
             "kind": "main",
             "tag": "custom-dagitim-pivot",
-            "url": "https://bizimniyan.github.io/sac-widgets/dagitim_pivot.js?v=100",
+            "url": "https://bizimniyan.github.io/sac-widgets/dagitim_pivot.js?v=101",
             "integrity": "",
             "ignoreIntegrity": true
         },
         {
             "kind": "builder",
             "tag": "custom-dagitim-pivot-builder",
-            "url": "https://bizimniyan.github.io/sac-widgets/dagitim_pivot_builder.js?v=100",
+            "url": "https://bizimniyan.github.io/sac-widgets/dagitim_pivot_builder.js?v=101",
             "integrity": "",
             "ignoreIntegrity": true
         }
@@ -28,7 +28,7 @@
         "width": { "type": "integer", "default": 1000 },
         "height": { "type": "integer", "default": 500 },
         "providerId": { "type": "string", "default": "C95nkt9eocd6e1fkif21rubvh2g" },
-        "rowDims": { "type": "string", "default": "ZDEVRE:Dağıtım Devresi, ZBOLUM:Dağıtım Devresi Bölümü, ZMASRAF_YERI:Gönderen Masrafyeri, ZMASRAF_YERIALICI:Alıcı Masraf Yeri, ZAKTIVITE:Aktivite" },
+        "rowDims": { "type": "string", "default": "ZDEVRE:Dağıtım Devresi, ZBOLUM:Dağıtım Devresi Bölümü, ZMASRAF_YERI:Gönderen Masrafyeri, ZMASRAF_YERIALICI:Alıcı Masraf Yeri, ZAKTIVITE:Aktivite, ZMASRAF_CESIDI.ZAKTIVITE:3lüKod" },
         "colDims": { "type": "string", "default": "Date" },
         "filters": { "type": "string", "default": "ZPARAMETRE=DGT0003" },
         "measures": { "type": "string", "default": "" },
