@@ -108,6 +108,8 @@
 
     const q = (v) => String(v).replace(/'/g, "''");
     const orEq = (field, ids) => "(" + ids.map(id => `${field} eq '${q(id)}'`).join(" or ") + ")";
+    const nzF = (ms) => " and (" + ms.map(m => `${m} gt 0 or ${m} lt 0`).join(" or ") + ")";
+    const NZ_ALL = nzF(MEASURES);
     const chunks = (arr, n) => {
         const out = [];
         for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
@@ -589,9 +591,9 @@
             try {
                 const [, dateRows, pairRows, listRows, paramRows] = await Promise.all([
                     loadScript(TABULATOR_JS),
-                    this._get("FactDataAggregation", { $select: "Date," + all, $filter: this._baseFilter }),
-                    this._get("FactDataAggregation", { $select: "ZMALZEME,ZBILESEN," + all, $filter: this._baseFilter }),
-                    this._get("FactDataAggregation", { $select: "ZMASRAF_OGESI," + all, $filter: this._listFilter }),
+                    this._get("FactDataAggregation", { $select: "Date," + all, $filter: this._baseFilter + NZ_ALL }),
+                    this._get("FactDataAggregation", { $select: "ZMALZEME,ZBILESEN," + all, $filter: this._baseFilter + NZ_ALL }),
+                    this._get("FactDataAggregation", { $select: "ZMASRAF_OGESI," + all, $filter: this._listFilter + NZ_ALL }),
                     this._get("ZPARAMETREMaster", { $select: "ID,Description", $filter: orEq("ID", params) }).catch(() => []),
                     this._loadMoDescriptions()
                 ]);
@@ -641,7 +643,7 @@
             const vals = MEASURES.map(() => new Map());
             try {
                 await runPool(dates.map(d => async () => {
-                    const rows = await this._get("FactDataAggregation", { $select: "ZMALZEME,ZPARAMETRE," + MEASURES.join(","), $filter: `${this._baseFilter} and Date eq '${q(d)}'` });
+                    const rows = await this._get("FactDataAggregation", { $select: "ZMALZEME,ZPARAMETRE," + MEASURES.join(","), $filter: `${this._baseFilter} and Date eq '${q(d)}'` + NZ_ALL });
                     if (token !== this._token) return;
                     rows.forEach(r => {
                         const f = fieldOf(d, r.ZPARAMETRE);
@@ -676,7 +678,7 @@
             if (!this._pairsPromise) {
                 this._pairsPromise = this._get("FactDataAggregation", {
                     $select: "ZMALZEME,ZMASRAF_OGESI,ZBILESEN," + MEASURES.join(","),
-                    $filter: this._baseFilter + " and ZBILESEN ne '#'"
+                    $filter: this._baseFilter + " and ZBILESEN ne '#'" + NZ_ALL
                 }).then(rows => {
                     const ups = new Map();
                     rows.forEach(r => {
@@ -912,7 +914,7 @@
                 const cache = this._childCache;
                 const p = this._get("FactDataAggregation", {
                     $select: `ZMALZEME,ZMASRAF_OGESI,ZBILESEN,Date,ZPARAMETRE,${m}`,
-                    $filter: `${this._baseFilter} and ZMALZEME eq '${q(id)}'`
+                    $filter: `${this._baseFilter} and ZMALZEME eq '${q(id)}'` + nzF([m])
                 }).then(rows => {
                     const agg = new Map();
                     rows.forEach(r => addRec(agg, r, m));
@@ -998,7 +1000,7 @@
             await runPool(this._dates.map(d => async () => {
                 const rows = await this._get("FactDataAggregation", {
                     $select: `ZMALZEME,ZMASRAF_OGESI,ZBILESEN,Date,ZPARAMETRE,${m}`,
-                    $filter: `${this._baseFilter} and Date eq '${q(d)}'`
+                    $filter: `${this._baseFilter} and Date eq '${q(d)}'` + nzF([m])
                 });
                 if (token !== this._token || cache !== this._childCache) return;
                 rows.forEach(r => addRec(agg, r, m));

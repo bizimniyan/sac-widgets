@@ -100,6 +100,7 @@
         return out;
     };
     const and = (a, b) => a && b ? `${a} and ${b}` : a || b;
+    const nzF = (ms) => "(" + ms.map(m => `${m} gt 0 or ${m} lt 0`).join(" or ") + ")";
     const splitList = (text) => String(text || "").split(/[;,\n]/).map(s => s.trim()).filter(Boolean);
     const memberId = (v) => {
         const m = String(v || "").trim().match(/&\[([^\]]*)\]$/);
@@ -623,6 +624,7 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
                 attrs.get(d.base).add(d.attr);
             });
             const mIds = Array.from(new Set(plan.atoms.map(a => a.base)));
+            filter = and(filter, nzF(mIds));
             const afBases = attrFilters.map(d => d.base);
             const rowSel = Array.from(new Set(p.rows.map(d => d.base).concat(afBases, qDims, p.rows.some(d => d.id === "ZTEDARIKCI") ? ["ZPARAMETRE"] : []))).concat(mIds).join(",");
             const colSel = Array.from(new Set(p.cols.map(d => d.base).concat(afBases, qDims))).concat(mIds).join(",");

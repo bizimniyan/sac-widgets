@@ -100,6 +100,7 @@
         return out;
     };
     const and = (a, b) => a && b ? `${a} and ${b}` : a || b;
+    const nzF = (ms) => "(" + ms.map(m => `${m} gt 0 or ${m} lt 0`).join(" or ") + ")";
     const splitList = (text) => String(text || "").split(/[;,\n]/).map(s => s.trim()).filter(Boolean);
     const memberId = (v) => {
         const m = String(v || "").trim().match(/&\[([^\]]*)\]$/);
@@ -419,7 +420,8 @@
                 this._setStatus(`Script ile verilmesi bekleniyor: ${missing.join(", ")}`);
                 return;
             }
-            const filter = Array.from(p.filters.entries()).filter(([d]) => d.indexOf(".") < 0).map(([d, vals]) => orEq(d, vals)).join(" and ");
+            const mIds = p.measures.map(m => m.id);
+            const filter = and(Array.from(p.filters.entries()).filter(([d]) => d.indexOf(".") < 0).map(([d, vals]) => orEq(d, vals)).join(" and "), nzF(Array.from(new Set(mIds))));
             const attrFilters = parseItems(Array.from(p.filters.keys()).filter(d => d.indexOf(".") > 0).join(","));
             const items = p.rows.concat(p.cols, attrFilters);
             const dims = Array.from(new Set(items.map(d => d.base)));
@@ -429,7 +431,6 @@
                 if (!attrs.has(d.base)) attrs.set(d.base, new Set());
                 attrs.get(d.base).add(d.attr);
             });
-            const mIds = p.measures.map(m => m.id);
             const afBases = attrFilters.map(d => d.base);
             const rowSel = Array.from(new Set(p.rows.map(d => d.base).concat(afBases, p.rows.some(d => d.id === "ZTEDARIKCI") ? ["ZPARAMETRE"] : []))).concat(mIds).join(",");
             const colSel = Array.from(new Set(p.cols.map(d => d.base).concat(afBases))).concat(mIds).join(",");

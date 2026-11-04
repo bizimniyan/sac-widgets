@@ -3,6 +3,7 @@
     const FFLATE_JS = "https://unpkg.com/fflate@0.8.2/esm/browser.js";
     const NONE = "#";
     const CHILD_FILTER = " and (ZBILESEN ne '#' or ZMASRAF_OGESI ne '#')";
+    const NZ_FILTER = " and (ZMIKTAR gt 0 or ZMIKTAR lt 0)";
     const CHUNK = 40;
     const MAX_HITS = 200;
     const TYPE_LABEL = { M: "Malzeme", B: "Bileşen", A: "Aktivite" };
@@ -748,7 +749,7 @@
                 this._setStatus("Builder panelinden model, versiyon ve parametreleri girin.");
                 return;
             }
-            this._scopeFilter = `Version eq '${q(version)}'` + (companies.length ? ` and ${orEq("ZSIRKET_KODU", companies)}` : "");
+            this._scopeFilter = `Version eq '${q(version)}'` + (companies.length ? ` and ${orEq("ZSIRKET_KODU", companies)}` : "") + NZ_FILTER;
             this._baseFilter = `${this._scopeFilter} and ${orEq("ZPARAMETRE", this._params)}`;
             this._setStatus("Malzeme listesi yükleniyor…");
 

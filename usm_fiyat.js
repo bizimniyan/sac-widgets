@@ -5,7 +5,7 @@
     const NO_DATE = "000000";
     const MAX_HITS = 200;
     const DEFAULT_MEASURES = ["ZORAN", "ZFIYAT"];
-    const DATES_KEY = "usmFiyatDates:";
+    const DATES_KEY = "usmFiyatDates2:";
     const BLOCK = 200;
     const ROW_H = 26;
     const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -91,6 +91,7 @@
 
     const q = (v) => String(v).replace(/'/g, "''");
     const orEq = (field, ids) => "(" + ids.map(id => `${field} eq '${q(id)}'`).join(" or ") + ")";
+    const nzF = (ms) => "(" + ms.map(m => `${m} gt 0 or ${m} lt 0`).join(" or ") + ")";
     const splitList = (text) => String(text || "").split(/[;,\n]/).map(s => s.trim()).filter(Boolean);
     const memberId = (v) => {
         const m = String(v || "").trim().match(/&\[([^\]]*)\]$/);
@@ -420,7 +421,8 @@
                 return;
             }
             const scope = `Version eq '${q(p.version)}'` + (p.companies.length ? ` and ${orEq("ZSIRKET_KODU", p.companies)}` : "");
-            const paramFilter = `${scope} and ${orEq("ZPARAMETRE", p.params)} and Date ne '${NONE}'`;
+            const rowFilter = `${scope} and ${orEq("ZPARAMETRE", p.params)} and Date ne '${NONE}'`;
+            const paramFilter = `${rowFilter} and ${nzF(p.measures)}`;
             this._paramFilter = paramFilter;
             const ms = p.measures.join(",");
             const t0 = Date.now();
@@ -432,7 +434,7 @@
             try {
                 const [, rowRecs, colRecs, supRecs, paramRows, supRows] = await Promise.all([
                     loadScript(TABULATOR_JS),
-                    this._get("FactDataAggregation", { $select: `ZMALZEME,ZTEDARIKCI,ZCURRENCY,${ms}`, $filter: `${paramFilter} and ZMALZEME ne '${NONE}'` }),
+                    this._get("FactDataAggregation", { $select: `ZMALZEME,ZTEDARIKCI,ZCURRENCY,${ms}`, $filter: `${rowFilter} and ZMALZEME ne '${NONE}'` }),
                     this._get("FactDataAggregation", { $select: `ZPARAMETRE,Date,${ms}`, $filter: `${paramFilter} and (ZMALZEME ne '${NONE}' or ZTEDARIKCI ne '${NONE}')` }),
                     this._get("FactDataAggregation", { $select: `ZTEDARIKCI,ZPARAMETRE,Date,${ms}`, $filter: `${paramFilter} and ZMALZEME eq '${NONE}' and ZTEDARIKCI ne '${NONE}'` }),
                     this._get("ZPARAMETREMaster", { $select: "ID,Description", $filter: orEq("ID", p.params) }).catch(() => []),
@@ -477,7 +479,7 @@
                     const ds = Array.from(paramDates.get(pr)).sort();
                     const title = this._paramDesc.get(pr) || pr;
                     if (!ds.length) ds.push(NO_DATE);
-                    ds.forEach(d => this._valueCols.push({ param: pr, date: d, field: fieldOf(pr, d), title, single: ds.length === 1 }));
+                    ds.forEach(d => this._valueCols.push({ param: pr, date: d, field: fieldOf(pr, d), title, single: ds.length === 1 && d === NO_DATE }));
                 });
                 if (!rows.length) {
                     this._destroyTable();
