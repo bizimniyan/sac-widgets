@@ -155,6 +155,11 @@
         const f = fieldOf(r.Date, r.ZPARAMETRE);
         target[f] = (target[f] || 0) + r.ZMIKTAR;
     };
+    const nz = (v) => typeof v === "number" && Math.abs(v) >= 1e-9;
+    const anyNz = (o, dates) => {
+        if (o) for (const k in o) if (nz(o[k]) && (!dates || dates.has(k.slice(1, k.indexOf("_"))))) return true;
+        return false;
+    };
     const errText = (e) => e && e.message ? e.message : String(e);
     const descFormatter = (cell) => {
         const d = cell.getData();
@@ -549,7 +554,7 @@
             const step = (text) => { btn.textContent = text; };
             btn.disabled = true;
             const token = this._token;
-            const ids = this._ids.slice();
+            let ids = this._ids.slice();
             try {
                 const fflate = await import(FFLATE_JS);
                 step("Excel: veri yükleniyor…");
@@ -562,10 +567,13 @@
                 ]);
                 if (token !== this._token) return;
                 if (!this._matVals) throw new Error(this._matValsError || "malzeme değerleri alınamadı");
+                ids = ids.filter(id => this._live.has(id));
+                const shown = this._valueFields.map((f, i) => i).filter(i => !this._hidden.has(this._valueFields[i]));
+                this._expFields = shown.map(i => this._valueFields[i]);
 
                 const total = this._exportCount(ids, tree);
                 const limit = Math.min(this.exportRows > 0 ? this.exportRows : EXPORT_ROWS, XLSX_MAX_ROWS);
-                const head = XLSX_HEAD.concat(this._valueTitles);
+                const head = XLSX_HEAD.concat(shown.map(i => this._valueTitles[i]));
                 const cols = head.map((_, i) => colName(i));
                 const parts = [];
                 let part = null;
@@ -624,21 +632,33 @@
             return tree;
         }
 
+        _maskOf(vals, mask) {
+            const s = new Set();
+            this._dates.forEach((d, i) => { if ((!mask || mask.has(d)) && nz(vals && vals[this._fUse[i]])) s.add(d); });
+            return s;
+        }
+
         _exportCount(ids, tree) {
             const memo = new Map();
-            const sub = (id, path, free) => {
-                const key = (free ? "1" : "0") + id;
+            const sub = (id, path, free, mask) => {
+                const key = (free ? "1" : "0") + (mask ? Array.from(mask).join(",") : "*") + "|" + id;
                 if (memo.has(key)) return memo.get(key);
-                const c = tree.has(id) ? this._childIds(tree.get(id), free) : null;
-                let n = c ? c.actIds.length : 0;
-                if (c) c.compIds.forEach(k => {
-                    n++;
-                    if (tree.has(k) && !path.has(k)) { path.add(k); n += sub(k, path, this._isFree(free, k)); path.delete(k); }
-                });
+                const t = tree.get(id);
+                const c = t ? this._childIds(t, free) : null;
+                let n = 0;
+                if (c) {
+                    c.actIds.forEach(k => { if (anyNz(t.acts.get(k), mask)) n++; });
+                    c.compIds.forEach(k => {
+                        const raw = t.comps.get(k);
+                        if (!anyNz(raw, mask)) return;
+                        n++;
+                        if (tree.has(k) && !path.has(k)) { path.add(k); n += sub(k, path, this._isFree(free, k), this._maskOf(raw, mask)); path.delete(k); }
+                    });
+                }
                 memo.set(key, n);
                 return n;
             };
-            return ids.reduce((s, id) => s + 1 + sub(id, new Set([id]), false), 0);
+            return ids.reduce((s, id) => s + 1 + sub(id, new Set([id]), false, null), 0);
         }
 
         *_exportRows(ids, tree) {
@@ -647,31 +667,36 @@
                 const a = this._attrOf(dim, id);
                 const cells = [lvl, top, parent, id, this._desc[dim].get(id) || "", a.g1, a.g2, TYPE_LABEL[kind]];
                 const all = this._addTotals(Object.assign(this._altFor(kind, id, vals), vals));
-                const fields = this._valueFields;
+                const fields = this._expFields;
                 for (let i = 0; i < fields.length; i++) {
                     const v = all[fields[i]];
                     cells.push(v !== undefined && v !== null ? Math.round(v * 1e6) / 1e6 : null);
                 }
                 return cells;
             };
-            const walk = function* (pid, top, lvl, path, free, scale) {
+            const walk = function* (pid, top, lvl, path, free, scale, mask) {
                 const c = tree.get(pid);
                 if (!c) return;
                 const v = this._childIds(c, free);
                 for (const id of v.compIds) {
-                    const vals = this._scaled(c.comps.get(id), scale);
+                    const raw = c.comps.get(id);
+                    if (!anyNz(raw, mask)) continue;
+                    const vals = this._scaled(raw, scale);
                     yield line(lvl, top, pid, id, "B", vals);
                     if (tree.has(id) && !path.has(id)) {
                         path.add(id);
-                        yield* walk.call(this, id, top, lvl + 1, path, this._isFree(free, id), this._scaleOf(vals, id));
+                        yield* walk.call(this, id, top, lvl + 1, path, this._isFree(free, id), this._scaleOf(vals, id), this._maskOf(raw, mask));
                         path.delete(id);
                     }
                 }
-                for (const id of v.actIds) yield line(lvl, top, pid, id, "A", this._scaled(c.acts.get(id), scale));
+                for (const id of v.actIds) {
+                    const raw = c.acts.get(id);
+                    if (anyNz(raw, mask)) yield line(lvl, top, pid, id, "A", this._scaled(raw, scale));
+                }
             };
             for (const id of ids) {
                 yield line(1, id, "", id, "M", this._matVals.get(id));
-                yield* walk.call(this, id, id, 2, new Set([id]), false, null);
+                yield* walk.call(this, id, id, 2, new Set([id]), false, null, null);
             }
         }
 
@@ -706,6 +731,9 @@
             this._attrPromise = null;
             this._matVals = null;
             this._matValsError = null;
+            this._live = null;
+            this._liveIds = null;
+            this._hidden = new Set();
             this._usedSet = null;
             this._parentsPromise = null;
             this._cons = null;
@@ -776,8 +804,9 @@
             const g2 = this._attrsReady ? this._grp[2] : null;
             const attr = this._attr.ZMALZEME;
             const u = this._compMatch ? this._usedSet || new Set() : null;
-            if (!m && !t && !g1 && !g2 && !u) return this._allIds.slice();
-            return this._allIds.filter(id => (!m || m(id)) && (!u || u.has(id)) &&
+            const base = this._liveIds || this._allIds;
+            if (!m && !t && !g1 && !g2 && !u) return base.slice();
+            return base.filter(id => (!m || m(id)) && (!u || u.has(id)) &&
                 (!t || ty.has(parents.has(id) ? (comps.has(id) ? "Y" : "M") : "H")) &&
                 (!g1 || g1.has((attr.get(id) || {}).g1 || "")) &&
                 (!g2 || g2.has((attr.get(id) || {}).g2 || "")));
@@ -891,7 +920,34 @@
                 return;
             }
             this._matVals = vals;
-            this._refreshTotalRow();
+            this._applyZero();
+        }
+
+        _applyZero() {
+            const live = new Set();
+            const on = new Set();
+            this._matVals.forEach((v, id) => {
+                for (const k in v) if (nz(v[k])) { live.add(id); on.add(k); }
+            });
+            this._live = live;
+            this._liveIds = this._allIds.filter(id => live.has(id));
+            const base = (d, p) => on.has(fieldOf(d, p === ALT ? USE_PARAM : p));
+            this._hidden = new Set(this._valueFields.filter((f, i) => {
+                const [d, p] = this._valueKeys[i];
+                return d === TOT ? !this._dates.some(x => base(x, p)) : !base(d, p);
+            }));
+            const table = this._table;
+            const ui = () => {
+                if (!table || table !== this._table) return;
+                if (this._hidden.size) {
+                    table.blockRedraw();
+                    this._hidden.forEach(f => { const c = table.getColumn(f); if (c) c.hide(); });
+                    table.restoreRedraw();
+                }
+                if (this._filteredIds().length !== this._ids.length) this._applyFilter();
+                else this._refreshTotalRow();
+            };
+            if (table && !table.initialized) table.on("tableBuilt", ui); else ui();
         }
 
         async _refreshTotalRow() {
@@ -1007,9 +1063,8 @@
         _updateStatus() {
             if (this._failed) return;
             const busy = Array.from(this._blocks.values()).some(s => s === "busy");
-            const count = this._ids.length === this._allIds.length
-                ? nf.format(this._allIds.length)
-                : `${nf.format(this._ids.length)} / ${nf.format(this._allIds.length)}`;
+            const all = (this._liveIds || this._allIds).length;
+            const count = this._ids.length === all ? nf.format(all) : `${nf.format(this._ids.length)} / ${nf.format(all)}`;
             this._setStatus(`${count} malzeme${busy ? " · değerler yükleniyor…" : ""}`);
         }
 
@@ -1183,7 +1238,7 @@
             this._gpop.hidden = false;
             if (level === "T") {
                 const counts = { M: 0, Y: 0, H: 0 };
-                this._allIds.forEach(id => { counts[this._parentSet.has(id) ? (this._compSet.has(id) ? "Y" : "M") : "H"]++; });
+                (this._liveIds || this._allIds).forEach(id => { counts[this._parentSet.has(id) ? (this._compSet.has(id) ? "Y" : "M") : "H"]++; });
                 this._gValues = TYPE_KEYS.map(k => [k, k === "H" && this._onlyParents ? null : counts[k], TYPE_NAMES[k]]);
                 this._gEdit = new Set(this._types);
                 this._renderGroupList();
@@ -1196,7 +1251,7 @@
             }
             const key = level === 1 ? "g1" : "g2";
             const counts = new Map();
-            this._allIds.forEach(id => {
+            (this._liveIds || this._allIds).forEach(id => {
                 const v = (this._attr.ZMALZEME.get(id) || {})[key] || "";
                 counts.set(v, (counts.get(v) || 0) + 1);
             });
@@ -1400,6 +1455,7 @@
             ];
             this._valueFields = [];
             this._valueTitles = [];
+            this._valueKeys = [];
             const valueParams = [].concat(...this._params.map(p => p === USE_PARAM ? [p, ALT] : [p]));
             this._totPlan = valueParams.map(p => ({ tot: fieldOf(TOT, p), parts: dates.map(d => fieldOf(d, p)) }));
             [TOT].concat(dates).forEach(d => {
@@ -1409,6 +1465,7 @@
                     columns: valueParams.map((p, i) => {
                         const title = p === ALT ? ALT_TITLE : this._paramDesc.get(p) || p;
                         this._valueFields.push(fieldOf(d, p));
+                        this._valueKeys.push([d, p]);
                         this._valueTitles.push(`${d === TOT ? "Toplam" : fmtDate(d)} ${title}`);
                         return {
                             title, headerTooltip: p === ALT ? "En alt bileşenlerin toplamı" : p, headerWordWrap: true, field: fieldOf(d, p), width: 112,
@@ -1546,7 +1603,10 @@
                 if (d._kind === "B" && (!this._matVals || !this._cons)) await Promise.all([this._matValsPromise, this._consPromise]);
                 if (token !== this._token) return;
                 const scale = d._kind === "B" ? this._scaleOf(d, d._id) : null;
-                const { compIds, actIds } = this._childIds({ comps, acts }, d._free);
+                const mask = d._kind === "B" ? this._maskOf(d) : null;
+                const ch = this._childIds({ comps, acts }, d._free);
+                const compIds = ch.compIds.filter(id => anyNz(comps.get(id), mask));
+                const actIds = ch.actIds.filter(id => anyNz(acts.get(id), mask));
                 const children = [];
                 compIds.forEach(id => {
                     const vals = this._scaled(comps.get(id), scale);

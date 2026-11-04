@@ -142,6 +142,7 @@
         const d = cell.getData();
         return d._total || d._wait ? "" : "–";
     };
+    const nonZero = (v) => v !== null && v !== undefined && Math.abs(v) >= 1e-9;
     const errText = (e) => e && e.message ? e.message : String(e);
 
     const cmpCode = (a, b) => {
@@ -522,7 +523,29 @@
             this._buildData(this._p, [recs], this._af, this._fixed(null));
             this._full = true;
             this._loadMs = Date.now() - t0;
+            if (!this._dropZeros()) {
+                this._destroyTable();
+                this._setStatus("Bu filtrelerle sıfırdan farklı veri yok.");
+                return;
+            }
             this._applyFilter();
+        }
+
+        _dropZeros() {
+            const fields = this._leaves.map(c => c.field);
+            const live = new Set();
+            this._rows = this._rows.filter(r => {
+                let any = false;
+                for (let i = 0; i < fields.length; i++) if (nonZero(r[fields[i]])) { live.add(fields[i]); any = true; }
+                return any;
+            });
+            if (!this._rows.length) return false;
+            if (live.size < fields.length) {
+                this._vUsed = new Set(Array.from(this._vUsed).filter(f => live.has(f)));
+                this._totCols = this._totCols.filter(t => live.has(t.field));
+                if (this._table) this._table.setColumns(this._columns(this._p));
+            }
+            return true;
         }
 
         _loadVisible() {
@@ -829,8 +852,7 @@
             this._updateStatus();
         }
 
-        _buildTable(p) {
-            this._destroyTable();
+        _columns(p) {
             this._inputs = new Map();
             const columns = [];
             p.rows.forEach((d, i) => {
@@ -845,7 +867,12 @@
             const fz = parseInt(this.freezeCols, 10);
             const first = this._twoCols(p.rows[0].id) ? 2 : 1;
             columns.forEach((c, k) => { c.frozen = k < (fz > 0 ? fz : first); });
-            const valueDefs = this._columnDefs(p);
+            return columns.concat(this._columnDefs(p));
+        }
+
+        _buildTable(p) {
+            this._destroyTable();
+            const columns = this._columns(p);
             this._shown = this._filtered();
             this._table = new window.Tabulator(this._tableEl, {
                 index: "key",
@@ -854,7 +881,7 @@
                 height: "100%",
                 rowHeight: 26,
                 layout: "fitData",
-                columns: columns.concat(valueDefs),
+                columns,
                 columnDefaults: { headerSort: false, resizable: "header", accessorClipboard: textCopy },
                 selectableRange: 1,
                 selectableRangeColumns: true,

@@ -112,6 +112,7 @@
         return d._total || d._wait ? "" : "–";
     };
     const errText = (e) => e && e.message ? e.message : String(e);
+    const nonZero = (v) => Math.abs(v) >= 1e-9;
 
     const cmpCode = (a, b) => {
         if (/^\d+$/.test(a) && /^\d+$/.test(b) && a.length !== b.length) return a.length - b.length;
@@ -544,7 +545,31 @@
             this._fill(this._rows, recs);
             this._full = true;
             this._loadMs = Date.now() - t0;
+            this._dropZeros();
+            if (!this._rows.length) {
+                this._destroyTable();
+                this._setStatus("Bu seçimde tüm değerler 0.");
+                return;
+            }
             this._applyFilter();
+        }
+
+        _dropZeros() {
+            const cols = this._valueCols;
+            const live = new Set();
+            this._rows = this._rows.filter(r => {
+                let any = false;
+                for (let i = 0; i < cols.length; i++) {
+                    if (nonZero(r[cols[i].field])) { any = true; live.add(cols[i].field); }
+                }
+                return any;
+            });
+            this._allIds = Array.from(new Set(this._rows.map(r => r.mat)));
+            this._allIndex = new Map(this._allIds.map((id, i) => [id, i]));
+            this._supIds = Array.from(new Set(this._rows.map(r => r.sup).filter(Boolean))).sort(cmpCode);
+            if (live.size === cols.length) return;
+            this._valueCols = cols.filter(c => live.has(c.field));
+            if (this._table && this._valueCols.length) this._table.setColumns(this._columns());
         }
 
         async _loadMasters(token) {
@@ -653,9 +678,7 @@
             this._updateStatus();
         }
 
-        _buildTable() {
-            this._destroyTable();
-            this._shown = this._filtered();
+        _columns() {
             const columns = [
                 { title: "Malzeme", field: "mat", width: 190, frozen: true, titleFormatter: () => this._kodHeaderEl },
                 { title: "Açıklama", field: "desc", width: 260, frozen: true },
@@ -671,12 +694,19 @@
             });
             this._params.forEach(pr => {
                 const cols = this._valueCols.filter(c => c.param === pr);
+                if (!cols.length) return;
                 if (cols[0].single) {
                     columns.push(valueCol(cols[0], cols[0].title, true));
                 } else {
                     columns.push({ title: cols[0].title, cssClass: "pgroup", columns: cols.map((c, i) => valueCol(c, fmtDate(c.date), i === 0)) });
                 }
             });
+            return columns;
+        }
+
+        _buildTable() {
+            this._destroyTable();
+            this._shown = this._filtered();
             this._table = new window.Tabulator(this._tableEl, {
                 index: "key",
                 data: [this._totalRow()].concat(this._shown),
@@ -684,7 +714,7 @@
                 height: "100%",
                 rowHeight: 26,
                 layout: "fitData",
-                columns: columns,
+                columns: this._columns(),
                 columnDefaults: { headerSort: false, resizable: "header", accessorClipboard: textCopy },
                 selectableRange: 1,
                 selectableRangeColumns: true,

@@ -300,6 +300,7 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
     const CALC = parseFormulas(FORMULAS);
     const ATOM_KEY = /^([au]\d*)_\d+$/;
     const VAL_KEY = /^[auvt]\d*_\d+$/;
+    const nz = (v) => typeof v === "number" && isFinite(v) && Math.abs(v) >= 1e-9;
     const isPct = (id) => {
         const c = CALC.get(id);
         return !!c && (/_PCT$/.test(id) || /\(%\)/.test(c.desc));
@@ -716,7 +717,32 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
             this._buildData(this._p, [recs], this._af, this._fixed(null));
             this._full = true;
             this._loadMs = Date.now() - t0;
-            this._applyFilter();
+            const colsChanged = this._dropZeros();
+            if (!this._rows.length) {
+                this._destroyTable();
+                this._setStatus("Bu filtrelerle sıfır dışı veri yok.");
+                return;
+            }
+            if (!colsChanged) return this._applyFilter();
+            this._buildTable(this._p);
+            this._updateStatus();
+        }
+
+        _dropZeros() {
+            const fields = new Set(Array.from(this._vUsed).concat(this._totCols.map(t => t.field)));
+            const live = new Set();
+            this._rows = this._rows.filter(row => {
+                let any = false;
+                for (const k in row) if (fields.has(k) && nz(row[k])) { live.add(k); any = true; }
+                return any;
+            });
+            this._byRow = new Map(this._rows.map(r => [r.key, r]));
+            const vUsed = new Set(Array.from(this._vUsed).filter(f => live.has(f)));
+            const totCols = this._totCols.filter(t => live.has(t.field));
+            const changed = vUsed.size !== this._vUsed.size || totCols.length !== this._totCols.length;
+            this._vUsed = vUsed;
+            this._totCols = totCols;
+            return changed;
         }
 
         _loadVisible() {

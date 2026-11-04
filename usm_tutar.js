@@ -134,6 +134,11 @@
         const d = cell.getData();
         return d._kind === "P" || d._wait ? "" : "–";
     };
+    const isZero = (v) => !(Math.abs(v) >= 1e-9);
+    const hasVal = (o) => {
+        if (o) for (const k in o) if (!isZero(o[k])) return true;
+        return false;
+    };
     const addInto = (target, src) => {
         for (const k in src) target[k] = (target[k] || 0) + src[k];
         return target;
@@ -561,6 +566,8 @@
             this._allIds = [];
             this._ids = [];
             this._matVals = null;
+            this._matValsPromise = null;
+            this._nz = null;
             this._resetChildren();
             this._used = null;
             this._pairsPromise = null;
@@ -613,7 +620,7 @@
                 this._compIndex = new Map(this._compIds.map((id, i) => [id, i]));
                 this._ids = this._filteredIds();
                 this._buildTable(dates);
-                this._loadMatVals(dates, token);
+                this._matValsPromise = this._loadMatVals(dates, token);
                 this._masterPromise = Promise.all([
                     this._loadMasterRanges("ZMALZEME", this._allIds, token),
                     this._loadMasterRanges("ZBILESEN", this._compIds, token)
@@ -654,6 +661,12 @@
             if (token !== this._token) return;
             this._matVals = vals;
             if (!this._table) return;
+            const nz = this._nzInfo();
+            if (this._ids.some(id => !nz.ids.has(id))) {
+                this._applyFilter(true);
+                return;
+            }
+            this._applyCols();
             const empty = Object.fromEntries(this._valueFields.map(f => [f, null]));
             await this._table.updateData([this._totalRow()].concat(this._ids.map(id => Object.assign({ key: `M${id}`, _wait: false }, empty, this._mVals(id)))));
             this._updateStatus();
@@ -720,8 +733,9 @@
             const g2 = this._attrsReady ? this._grp[2] : null;
             const attr = this._attr.ZMALZEME;
             const u = this._compMatch ? (this._used ? this._used.any : EMPTY_SET) : null;
-            if (!m && !t && !g1 && !g2 && !u) return this._allIds.slice();
-            return this._allIds.filter(id => (!m || m(id)) && (!u || u.has(id)) &&
+            const live = this._liveIds();
+            if (!m && !t && !g1 && !g2 && !u) return live.slice();
+            return live.filter(id => (!m || m(id)) && (!u || u.has(id)) &&
                 (!t || ty.has(this._typeOf(id))) &&
                 (!g1 || g1.has((attr.get(id) || {}).g1 || "")) &&
                 (!g2 || g2.has((attr.get(id) || {}).g2 || "")));
@@ -799,13 +813,52 @@
             this._applyFilter();
         }
 
-        _applyFilter() {
+        _applyFilter(keepOpen) {
             this._kodInput.classList.toggle("on", !!this._matFilter);
             this._updateTypeButton();
             if (!this._table || !this._allIds.length) return;
             this._ids = this._filteredIds();
-            this._table.replaceData([this._totalRow()].concat(this._ids.map(id => this._mRow(id))));
+            this._applyCols();
+            const open = keepOpen ? this._table.getRows().filter(r => r.getData()._kind === "M" && r.isTreeExpanded()).map(r => r.getData().key) : [];
+            this._table.replaceData([this._totalRow()].concat(this._ids.map(id => this._mRow(id)))).then(() => open.forEach(k => {
+                const r = this._table && this._table.getRow(k);
+                if (r) r.treeExpand();
+            }));
             this._updateStatus();
+        }
+
+        _nzInfo() {
+            if (!this._matVals) return null;
+            const mi = this._mi();
+            if (this._nz && this._nz.mi === mi && this._nz.vals === this._matVals) return this._nz;
+            const ids = new Set();
+            const fields = new Set();
+            this._matVals[mi].forEach((v, id) => {
+                const o = this._addTotals(Object.assign({}, v));
+                let any = false;
+                for (const f in o) if (!isZero(o[f])) { any = true; fields.add(f); }
+                if (any) ids.add(id);
+            });
+            return this._nz = { mi, vals: this._matVals, ids, fields, live: this._allIds.filter(id => ids.has(id)) };
+        }
+
+        _liveIds() {
+            const nz = this._nzInfo();
+            return nz ? nz.live : this._allIds;
+        }
+
+        _shownFields() {
+            const nz = this._nzInfo();
+            return this._valueFields.map((f, i) => i).filter(i => !nz || nz.fields.has(this._valueFields[i]));
+        }
+
+        _applyCols() {
+            const nz = this._nzInfo();
+            if (!this._table || !nz) return;
+            this._valueFields.forEach(f => {
+                const c = this._table.getColumn(f);
+                if (c && c.isVisible() !== nz.fields.has(f)) nz.fields.has(f) ? c.show() : c.hide();
+            });
         }
 
         _totalRow() {
@@ -888,6 +941,7 @@
                 a.moIds.forEach(mo => {
                     if (used && !(used.get(mo) || EMPTY_SET).has(d._id)) return;
                     const o = a.mos.get(mo);
+                    if (!hasVal(o.vals)) return;
                     out.push(this._node(`${d.key}/O${mo}`, "O", mo, o.vals, { _mat: d._id, _mo: mo, _free: d._free, _path: d._path }, o.compIds.length > 0));
                 });
                 return out;
@@ -905,12 +959,13 @@
             src.compIds.forEach(id => {
                 const hit = !!(m && m(id));
                 if (u && !hit && !u.has(id)) return;
-                const raw = src.comps.get(id);
+                const vals = fac ? scaleVals(src.comps.get(id), fac) : src.comps.get(id);
+                if (!hasVal(vals)) return;
                 const own = this._ownOf(id, mo);
                 const known = this._agg.has(id);
                 const cyc = d._path.indexOf(id) >= 0;
                 const expandable = !cyc && (known ? !!own && own.compIds.length > 0 : this._parentSet.has(id));
-                out.push(this._node(`${d.key}/B${id}`, "B", id, fac ? scaleVals(raw, fac) : raw,
+                out.push(this._node(`${d.key}/B${id}`, "B", id, vals,
                     { _mo: mo, _free: d._free || hit, _path: d._path.concat(id) }, expandable));
             });
             return out;
@@ -967,22 +1022,24 @@
             const step = (text) => { btn.textContent = text; };
             btn.disabled = true;
             const token = this._token;
-            const ids = this._ids.slice();
             try {
                 const fflate = await import(FFLATE_JS);
                 step("Excel: veri yükleniyor…");
                 await Promise.all([
+                    this._matValsPromise,
                     this._masterPromise,
                     this._loadFull(token, (done, n) => step(`Excel: veri ${done} / ${n} ay`))
                 ]);
                 if (token !== this._token) return;
+                const ids = this._ids.slice();
+                const shown = this._shownFields();
                 const limit = Math.min(this.exportRows > 0 ? this.exportRows : EXPORT_ROWS, XLSX_MAX_ROWS);
-                const head = XLSX_HEAD.concat(this._valueTitles);
+                const head = XLSX_HEAD.concat(shown.map(i => this._valueTitles[i]));
                 const cols = head.map((_, i) => colName(i));
                 const parts = [];
                 let part = null;
                 let written = 0;
-                for (const cells of this._exportRows(ids)) {
+                for (const cells of this._exportRows(ids, shown.map(i => this._valueFields[i]))) {
                     if (part && part.rows() - 1 >= limit) {
                         parts.push(part.finish());
                         part = null;
@@ -1018,9 +1075,8 @@
             }
         }
 
-        *_exportRows(ids) {
+        *_exportRows(ids, fields) {
             const self = this;
-            const fields = this._valueFields;
             const line = (lvl, top, parent, r) => {
                 const dim = DIM[r._kind];
                 const a = this._attrOf(dim, r._id);
@@ -1046,9 +1102,10 @@
         }
 
         _updateStatus() {
-            const count = this._ids.length === this._allIds.length
-                ? nf.format(this._allIds.length)
-                : `${nf.format(this._ids.length)} / ${nf.format(this._allIds.length)}`;
+            const all = this._liveIds().length;
+            const count = this._ids.length === all
+                ? nf.format(all)
+                : `${nf.format(this._ids.length)} / ${nf.format(all)}`;
             this._setStatus(`${count} malzeme${this._matVals ? "" : " · değerler yükleniyor…"}`);
         }
 
@@ -1186,7 +1243,7 @@
             this._gpop.hidden = false;
             if (level === "T") {
                 const counts = { M: 0, Y: 0, H: 0 };
-                this._allIds.forEach(id => { counts[this._typeOf(id)]++; });
+                this._liveIds().forEach(id => { counts[this._typeOf(id)]++; });
                 this._gValues = TYPE_KEYS.map(k => [k, counts[k], TYPE_NAMES[k]]);
                 this._gEdit = new Set(this._types);
                 this._renderGroupList();
@@ -1202,7 +1259,7 @@
                 }
                 const key = level === 1 ? "g1" : "g2";
                 const counts = new Map();
-                this._allIds.forEach(id => {
+                this._liveIds().forEach(id => {
                     const v = (this._attr.ZMALZEME.get(id) || {})[key] || "";
                     counts.set(v, (counts.get(v) || 0) + 1);
                 });
