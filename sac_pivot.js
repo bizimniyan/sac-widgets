@@ -320,6 +320,7 @@
             this._colSelsEl = shadowRoot.getElementById("colSels");
             this._colSel = new Map();
             this._colIds = new Map();
+            this._colAll = new Map();
             this._versions = new Map();
             this._table = null;
             this._token = 0;
@@ -509,6 +510,7 @@
                     if (m.size && !NO_MASTER.has(d)) this._desc.set(d, m);
                     if (attrs.has(d)) this._attrs.set(d, new Map(masters[i].map(r => [r.ID, r])));
                 });
+                colDims.forEach(d => { if (!this._colSel.has(d.id)) this._colAll.set(d.id, Array.from(new Set(colRecs.map(r => r[d.id]).filter(v => v !== undefined && v !== null))).sort(cmpCode)); });
                 this._buildData(Object.assign({}, p, { rows: [] }), [colRecs], attrFilters);
                 const colState = { cols: this._cols, totCols: this._totCols, vUsed: this._vUsed };
                 this._buildData(Object.assign({}, p, { cols: [] }), [rowRecs], attrFilters);
@@ -1132,6 +1134,7 @@
             const other = Array.from(this._colSel.entries()).filter(([k]) => k !== d.id).map(([, c]) => c.clause).join(" and ");
             const filter = and(this._baseFilter, other);
             const key = d.id + "|" + filter;
+            if (this._colAll.has(d.id)) this._colIds.set(key, this._colAll.get(d.id));
             if (!this._colIds.has(key)) {
                 const text = btn.textContent;
                 btn.textContent = `${d.label}: yükleniyor…`;
