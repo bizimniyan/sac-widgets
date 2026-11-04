@@ -6,20 +6,20 @@
     "vendor": "Custom",
     "license": "",
     "id": "com.custom.giderpivot",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "icon": "",
     "webcomponents": [
         {
             "kind": "main",
             "tag": "custom-gider-pivot",
-            "url": "https://bizimniyan.github.io/sac-widgets/gider_pivot.js?v=110",
+            "url": "https://bizimniyan.github.io/sac-widgets/gider_pivot.js?v=111",
             "integrity": "",
             "ignoreIntegrity": true
         },
         {
             "kind": "builder",
             "tag": "custom-gider-pivot-builder",
-            "url": "https://bizimniyan.github.io/sac-widgets/gider_pivot_builder.js?v=110",
+            "url": "https://bizimniyan.github.io/sac-widgets/gider_pivot_builder.js?v=111",
             "integrity": "",
             "ignoreIntegrity": true
         }
@@ -28,8 +28,8 @@
         "width": { "type": "integer", "default": 1000 },
         "height": { "type": "integer", "default": 500 },
         "providerId": { "type": "string", "default": "C206aen5clh2sh7ml7jvoco615" },
-        "rowDims": { "type": "string", "default": "ZMASRAF_YERI:Masraf Yeri, ZMASRAF_CESIDI:Masraf Çeşidi, ZMASRAF_CESIDI.UST_GRUP:Üst Grup, ZMASRAF_CESIDI.ZBUTCE_KODU:Bütçe Kodu, ZMASRAF_CESIDI.ZBUTCE_KODU_TANIM:Bütçe Kodu Tanımı, ZMASRAF_CESIDI.ZAKTIVITE:3lüKod, ZPYP_KODU:PYP Kodu, ZPARAMETRE:Parametre, ZCURRENCY:Para Birimi" },
-        "colDims": { "type": "string", "default": "Date" },
+        "rowDims": { "type": "string", "default": "ZMASRAF_YERI:Masraf Yeri, ZMASRAF_CESIDI:Masraf Çeşidi, ZMASRAF_CESIDI.UST_GRUP:Üst Grup, ZMASRAF_CESIDI.ZBUTCE_KODU:Bütçe Kodu, ZMASRAF_CESIDI.ZBUTCE_KODU_TANIM:Bütçe Kodu Tanımı, ZMASRAF_CESIDI.ZAKTIVITE:3lüKod, ZPYP_KODU:PYP Kodu, ZCURRENCY:Para Birimi" },
+        "colDims": { "type": "string", "default": "ZPARAMETRE:Parametre, Date" },
         "filters": { "type": "string", "default": "ZPARAMETRE=GDR0001,GDR0002,GDR0003,GDR0004,GDR0005; ZDATA_SOURCE=INP,CALC,TRNSFR" },
         "measures": { "type": "string", "default": "" },
         "measureSelect": { "type": "string", "default": "x" },
