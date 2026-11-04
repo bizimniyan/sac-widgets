@@ -1149,8 +1149,13 @@
             const qs = Object.keys(params).map(k => `${k}=${encodeURIComponent(params[k])}`).join("&");
             let url = `${window.location.origin}/api/v1/dataexport/providers/sac/${encodeURIComponent(this._pid)}/${path}?${qs}`;
             const out = [];
+            let retries = 2;
             while (url) {
                 const resp = await fetch(url, { method: "GET", credentials: "include", headers: { Accept: "application/json" }, signal: this._abort && this._abort.signal });
+                if (resp.status >= 500 && retries-- > 0) {
+                    await new Promise(r => setTimeout(r, 500));
+                    continue;
+                }
                 if (!resp.ok) {
                     const body = await resp.text();
                     throw new Error(`HTTP ${resp.status} ${body.slice(0, 300)}`);
