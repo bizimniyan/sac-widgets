@@ -1,0 +1,100 @@
+{
+    "name": "DagitimPivotWidget",
+    "description": "Dagitim pivot tablosu (devre, bolum, gonderen ve alici masraf yeri, aktivite)",
+    "newInstancePrefix": "DagitimPivot",
+    "eula": "",
+    "vendor": "Custom",
+    "license": "",
+    "id": "com.custom.dagitimpivot",
+    "version": "1.0.0",
+    "icon": "",
+    "webcomponents": [
+        {
+            "kind": "main",
+            "tag": "custom-dagitim-pivot",
+            "url": "https://bizimniyan.github.io/sac-widgets/dagitim_pivot.js?v=100",
+            "integrity": "",
+            "ignoreIntegrity": true
+        },
+        {
+            "kind": "builder",
+            "tag": "custom-dagitim-pivot-builder",
+            "url": "https://bizimniyan.github.io/sac-widgets/dagitim_pivot_builder.js?v=100",
+            "integrity": "",
+            "ignoreIntegrity": true
+        }
+    ],
+    "properties": {
+        "width": { "type": "integer", "default": 1000 },
+        "height": { "type": "integer", "default": 500 },
+        "providerId": { "type": "string", "default": "C95nkt9eocd6e1fkif21rubvh2g" },
+        "rowDims": { "type": "string", "default": "ZDEVRE:Dağıtım Devresi, ZBOLUM:Dağıtım Devresi Bölümü, ZMASRAF_YERI:Gönderen Masrafyeri, ZMASRAF_YERIALICI:Alıcı Masraf Yeri, ZAKTIVITE:Aktivite" },
+        "colDims": { "type": "string", "default": "Date" },
+        "filters": { "type": "string", "default": "ZPARAMETRE=DGT0003" },
+        "measures": { "type": "string", "default": "" },
+        "measureSelect": { "type": "string", "default": "x" },
+        "freezeCols": { "type": "string", "default": "4" }
+    },
+    "methods": {
+        "setVersion": {
+            "description": "Versiyonu verir ve veriyi yukler (zorunlu; verilmeden veri cekilmez)",
+            "parameters": [
+                { "name": "version", "type": "string", "description": "Versiyon ID, orn. public.2027BUD_01" }
+            ]
+        },
+        "setCompanyCode": {
+            "description": "Sirket kodunu verir ve veriyi yukler (zorunlu; bos = hepsi, virgulle coklu)",
+            "parameters": [
+                { "name": "companyCode", "type": "string", "description": "Sirket kodu, orn. 1100" }
+            ]
+        },
+        "setFilter": {
+            "description": "Sabit filtreyi degistirir ve veriyi yeniden yukler; bos deger = filtreyi kaldir",
+            "parameters": [
+                { "name": "dimension", "type": "string", "description": "Boyut ID, orn. Version, ZSIRKET_KODU" },
+                { "name": "values", "type": "string", "description": "Degerler virgulle, orn. 1100,1200" }
+            ]
+        },
+        "setMeasureSelection": {
+            "description": "Measure secimli acikken gosterilecek tutar: ZTUTAR, ZTUTAR_TRY, ZTUTAR_EUR, ZTUTAR_USD",
+            "parameters": [
+                { "name": "measure", "type": "string", "description": "orn. ZTUTAR_EUR" }
+            ]
+        },
+        "getMeasureSelection": {
+            "description": "Secili tutar measure'i",
+            "parameters": [],
+            "returnType": "string"
+        },
+        "getFilter": {
+            "description": "Boyutun gecerli sabit filtre degerleri (virgulle)",
+            "parameters": [
+                { "name": "dimension", "type": "string", "description": "Boyut ID" }
+            ],
+            "returnType": "string"
+        },
+        "setSelection": {
+            "description": "Satir boyutu secim kutusu: 110*, 110000001, 110000000-110009999, (boş), !kod = haric; birden fazlasi ; ile, bos = tumu",
+            "parameters": [
+                { "name": "dimension", "type": "string", "description": "Satir boyutu ID" },
+                { "name": "values", "type": "string", "description": "Secim metni" }
+            ]
+        },
+        "getSelection": {
+            "description": "Satir boyutunun gecerli secimi",
+            "parameters": [
+                { "name": "dimension", "type": "string", "description": "Satir boyutu ID" }
+            ],
+            "returnType": "string"
+        },
+        "exportExcel": {
+            "description": "Secime uyan satirlari Excel'e aktarir",
+            "parameters": []
+        },
+        "refresh": {
+            "description": "Veriyi yeniden yukler",
+            "parameters": []
+        }
+    },
+    "events": {}
+}
