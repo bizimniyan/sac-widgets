@@ -4,6 +4,7 @@
     const NONE = "#";
     const NO_DATE = "000000";
     const MAX_HITS = 200;
+    const SEL_ROWS_MAX = 50;
     const DEFAULT_MEASURES = ["ZORAN", "ZFIYAT"];
     const DATES_KEY = "usmFiyatDates2:";
     const BLOCK = 200;
@@ -119,21 +120,36 @@
         if (/^\d+$/.test(a) && /^\d+$/.test(b) && a.length !== b.length) return a.length - b.length;
         return a < b ? -1 : a > b ? 1 : 0;
     };
+    const BLANK = "(boş)";
+    const quoteId = (id) => id === "" ? BLANK : /[-*?;,!"]/.test(id) ? `"${id}"` : id;
     const parseToken = (tok) => {
+        if (/^!?"/.test(tok)) return { low: tok, high: "" };
         const m = tok.indexOf("*") < 0 ? tok.match(/^(.+?)\s*-\s*(.+)$/) : null;
         return m ? { low: m[1].trim(), high: m[2].trim() } : { low: tok, high: "" };
     };
     const tokenText = (s) => s.high ? `${s.low}-${s.high}` : s.low;
+    // ";" ile token: kod, 11*, alt-üst, "tırnaklı tam değer", (boş); başında ! = hariç
     const matcher = (text) => {
-        const tests = splitList(text).map(parseToken).map(s => {
-            if (s.high) return id => cmpCode(id, s.low) >= 0 && cmpCode(id, s.high) <= 0;
-            if (/[*?]/.test(s.low)) {
+        const sets = { p: new Set(), n: new Set() };
+        const fns = { p: [], n: [] };
+        splitList(text).forEach(tok => {
+            const k = tok[0] === "!" ? "n" : "p";
+            const raw = k === "n" ? tok.slice(1).trim() : tok;
+            const q = raw.match(/^"(.*)"$/);
+            if (q) { sets[k].add(q[1]); return; }
+            const s = parseToken(raw);
+            if (!s.low) return;
+            if (s.high) fns[k].push(id => cmpCode(id, s.low) >= 0 && cmpCode(id, s.high) <= 0);
+            else if (/[*?]/.test(s.low)) {
                 const re = new RegExp("^" + s.low.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$", "i");
-                return id => re.test(id);
-            }
-            return id => id === s.low;
+                fns[k].push(id => re.test(id));
+            } else sets[k].add(s.low === BLANK ? "" : s.low);
         });
-        return tests.length ? id => tests.some(t => t(id)) : null;
+        const hasP = sets.p.size > 0 || fns.p.length > 0;
+        const hasN = sets.n.size > 0 || fns.n.length > 0;
+        if (!hasP && !hasN) return null;
+        const hit = (k, id) => sets[k].has(id) || fns[k].some(f => f(id));
+        return id => (!hasP || hit("p", id)) && !(hasN && hit("n", id));
     };
     const groupLabel = (v) => v ? v : "(boş)";
     const stopEvents = (el) => ["mousedown", "mouseup", "click", "dblclick", "keydown", "keyup", "keypress", "contextmenu"]
@@ -220,6 +236,9 @@
             .hits b { flex: 0 0 72px; font-weight: 600; }
             .hits span { overflow: hidden; text-overflow: ellipsis; color: #444; }
             .hit-info { color: #888; margin-top: 3px; min-height: 14px; }
+            .hit-act { display: flex; gap: 4px; margin-top: 4px; }
+            .hit-act button { padding: 1px 8px; }
+            .sel-more { color: #666; padding: 2px 0; }
             .pop-f { display: flex; gap: 6px; padding: 6px 10px; border-top: 1px solid #eee; }
             .pop-f .sp { flex: 1; }
             .pop-f button { padding: 3px 12px; }
@@ -240,8 +259,9 @@
                     <div class="pop-sec">Seçimler <small>(tek kod, 11* veya alt – üst aralık)</small></div>
                     <div id="selRows" class="sel-rows"></div>
                     <button id="addRow" class="link">+ satır</button>
-                    <div class="pop-sec"><span id="popSearchLbl">Malzeme ara</span> <small>(kod veya tanım; işaretle = seçimlere ekle)</small></div>
+                    <div class="pop-sec"><span id="popSearchLbl">Malzeme ara</span> <small>(kod veya tanım; tik kaldır = hariç tut)</small></div>
                     <input id="search" type="text" placeholder="örn. 1100253 veya RULMAN">
+                    <div class="hit-act"><button id="hitAll">Tümünü seç</button><button id="hitNone">Tümünü kaldır</button></div>
                     <div id="hits" class="hits"></div>
                     <div id="hitInfo" class="hit-info"></div>
                 </div>
@@ -927,14 +947,26 @@
             stopEvents(this._pop);
             $("popClose").addEventListener("click", () => this._closePopup());
             $("popCancel").addEventListener("click", () => this._closePopup());
-            $("popClear").addEventListener("click", () => { this._sel = []; this._renderSelRows(); this._renderHits(); });
+            $("popClear").addEventListener("click", () => { this._sel = [{ low: "", high: "" }]; this._rowsChanged(true); });
             $("popOk").addEventListener("click", () => {
-                this._readSelRows();
+                if (this._genTokens && !this._checked.size) {
+                    this._hitInfoEl.textContent = "En az bir değer seçin.";
+                    return;
+                }
+                if (!this._genTokens) this._readSelRows();
+                const text = this._genTokens ? this._genTokens.join("; ") : this._sel.filter(s => s.low).map(tokenText).join("; ");
                 this._closePopup();
-                this._setKindFilter(this._popKind, this._sel.filter(s => s.low).map(tokenText).join("; "));
+                this._setKindFilter(this._popKind, text);
+            });
+            $("hitAll").addEventListener("click", () => this._checkMatches(true));
+            $("hitNone").addEventListener("click", () => this._checkMatches(false));
+            this._selRowsEl.addEventListener("input", () => {
+                clearTimeout(this._rowsTimer);
+                this._rowsTimer = setTimeout(() => this._rowsChanged(false), 200);
             });
             $("addRow").addEventListener("click", () => {
                 this._readSelRows();
+                this._genTokens = null;
                 this._sel.push({ low: "", high: "" });
                 this._renderSelRows();
                 const inputs = this._selRowsEl.querySelectorAll("input");
@@ -945,14 +977,9 @@
                 this._searchTimer = setTimeout(() => this._search(), 200);
             });
             this._hitsEl.addEventListener("change", (e) => {
-                const id = e.target.value;
-                this._readSelRows();
-                if (e.target.checked) {
-                    if (!this._sel.some(s => !s.high && s.low === id)) this._sel.push({ low: id, high: "" });
-                } else {
-                    this._sel = this._sel.filter(s => s.high || s.low !== id);
-                }
-                this._renderSelRows();
+                if (e.target.checked) this._checked.add(e.target.value);
+                else this._checked.delete(e.target.value);
+                this._checksChanged();
             });
             this._pop.addEventListener("keydown", (e) => { if (e.key === "Escape") this._closePopup(); });
         }
@@ -971,6 +998,9 @@
             this._pop.style.left = Math.max(8, Math.min(btn.getBoundingClientRect().left - wrap.left - 200, wrap.width - 468)) + "px";
             this._sel = splitList(sup ? this._supFilter : this._matFilter).map(parseToken);
             if (!this._sel.length) this._sel.push({ low: "", high: "" });
+            this._genTokens = null;
+            const cm = matcher((this._popKind === "sup" ? this._supFilter : this._matFilter));
+            this._checked = new Set((this._popKind === "sup" ? this._supIds : this._allIds).filter(id => !cm || cm(id)));
             this._renderSelRows();
             this._searchEl.value = "";
             this._pop.hidden = false;
@@ -982,7 +1012,35 @@
             this._pop.hidden = true;
         }
 
+        _rowsChanged(render) {
+            if (!render) this._readSelRows();
+            this._genTokens = null;
+            const m = matcher(this._sel.filter(s => s.low).map(tokenText).join("; "));
+            this._checked = new Set((this._popKind === "sup" ? this._supIds : this._allIds).filter(id => !m || m(id)));
+            if (render) this._renderSelRows();
+            this._renderHits();
+        }
+
+        _checksChanged() {
+            const all = (this._popKind === "sup" ? this._supIds : this._allIds);
+            const on = this._checked;
+            const pick = on.size <= all.length - on.size;
+            this._genTokens = on.size === all.length ? [] : all.filter(id => on.has(id) === pick).map(id => (pick ? "" : "!") + quoteId(id));
+            this._sel = this._genTokens.length ? this._genTokens.map(t => ({ low: t, high: "" })) : [{ low: "", high: "" }];
+            this._renderSelRows();
+            this._renderHits();
+        }
+
+        _checkMatches(on) {
+            (this._matches || []).forEach(id => { if (on) this._checked.add(id); else this._checked.delete(id); });
+            this._checksChanged();
+        }
+
         _readSelRows() {
+            if (this._genTokens && this._genTokens.length > SEL_ROWS_MAX) {
+                this._sel = this._genTokens.map(t => ({ low: t, high: "" }));
+                return;
+            }
             this._sel = Array.from(this._selRowsEl.querySelectorAll(".sel-row")).map(r => {
                 const [lo, hi] = r.querySelectorAll("input");
                 return { low: lo.value.trim(), high: hi.value.trim() };
@@ -991,6 +1049,13 @@
 
         _renderSelRows() {
             this._selRowsEl.innerHTML = "";
+            if (this._genTokens && this._genTokens.length > SEL_ROWS_MAX) {
+                const info = document.createElement("div");
+                info.className = "sel-more";
+                info.textContent = `Listeden ${nf.format(this._checked.size)} / ${nf.format((this._popKind === "sup" ? this._supIds : this._allIds).length)} değer seçili`;
+                this._selRowsEl.appendChild(info);
+                return;
+            }
             this._sel.forEach((s, i) => {
                 const row = document.createElement("div");
                 row.className = "sel-row";
@@ -1001,8 +1066,8 @@
                 row.querySelector("button").addEventListener("click", () => {
                     this._readSelRows();
                     this._sel.splice(i, 1);
-                    this._renderSelRows();
-                    this._renderHits();
+                    if (!this._sel.length) this._sel.push({ low: "", high: "" });
+                    this._rowsChanged(true);
                 });
                 this._selRowsEl.appendChild(row);
             });
@@ -1014,29 +1079,24 @@
             const all = sup ? this._supIds : this._allIds;
             const desc = sup ? this._supDesc : this._matDesc;
             const noun = sup ? "tedarikçi" : "malzeme";
-            let hits;
+            let matches;
             if (!term) {
-                hits = all.slice(0, MAX_HITS + 1);
+                matches = all;
             } else {
                 const lower = term.toLocaleLowerCase("tr-TR");
                 const m = /[*?]/.test(term) ? matcher(term) : null;
-                hits = [];
-                for (let i = 0; i < all.length && hits.length <= MAX_HITS; i++) {
-                    const id = all[i];
-                    if (m ? m(id) : id.indexOf(term) >= 0 || (desc.get(id) || "").toLocaleLowerCase("tr-TR").indexOf(lower) >= 0) hits.push(id);
-                }
+                matches = all.filter(id => m ? m(id) : id.indexOf(term) >= 0 || (desc.get(id) || "").toLocaleLowerCase("tr-TR").indexOf(lower) >= 0);
             }
-            const more = hits.length > MAX_HITS;
-            this._hits = hits.slice(0, MAX_HITS);
+            this._matches = matches;
+            this._hits = matches.slice(0, MAX_HITS);
             this._renderHits();
-            this._hitInfoEl.textContent = this._hits.length
-                ? `${this._hits.length} ${noun}${more ? ` (ilk ${MAX_HITS} gösteriliyor, aramayı daraltın)` : ""}`
+            this._hitInfoEl.textContent = matches.length
+                ? `${nf.format(matches.length)} ${noun}${term ? ` / ${nf.format(all.length)}` : ""}${matches.length > MAX_HITS ? ` (ilk ${MAX_HITS} gösteriliyor; Tümünü seç/kaldır hepsine uygulanır)` : ""}`
                 : `Eşleşen ${noun} yok.`;
         }
 
         _renderHits() {
             if (!this._hits) return;
-            const singles = new Set((this._sel || []).filter(s => !s.high).map(s => s.low));
             this._hitsEl.innerHTML = "";
             const frag = document.createDocumentFragment();
             this._hits.forEach(id => {
@@ -1044,7 +1104,7 @@
                 label.innerHTML = `<input type="checkbox"><b></b><span></span>`;
                 const cb = label.querySelector("input");
                 cb.value = id;
-                cb.checked = singles.has(id);
+                cb.checked = this._checked.has(id);
                 label.querySelector("b").textContent = id;
                 label.querySelector("span").textContent = (this._popKind === "sup" ? this._supDesc : this._matDesc).get(id) || "";
                 frag.appendChild(label);
