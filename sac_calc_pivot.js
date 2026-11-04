@@ -462,6 +462,8 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
             this._root = shadowRoot;
             this._statusEl = shadowRoot.getElementById("status");
             this._tableEl = shadowRoot.getElementById("table");
+            // Tabulator 6.3.1: Enter editörsüz hücrede düzenleme açmaya çalışıp çöküyor
+            this._tableEl.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.target.closest("input,textarea,select")) e.stopPropagation(); }, true);
             this._xlsBtn = shadowRoot.getElementById("xls");
             this._xlsBtn.addEventListener("click", () => this.exportExcel());
             this._mSelWrap = shadowRoot.getElementById("mSelWrap");

@@ -6,20 +6,20 @@
     "vendor": "Custom",
     "license": "",
     "id": "com.custom.usmtutar",
-    "version": "1.2.1",
+    "version": "1.2.2",
     "icon": "",
     "webcomponents": [
         {
             "kind": "main",
             "tag": "custom-usm-tutar",
-            "url": "https://bizimniyan.github.io/sac-widgets/usm_tutar.js?v=121",
+            "url": "https://bizimniyan.github.io/sac-widgets/usm_tutar.js?v=122",
             "integrity": "",
             "ignoreIntegrity": true
         },
         {
             "kind": "builder",
             "tag": "custom-usm-tutar-builder",
-            "url": "https://bizimniyan.github.io/sac-widgets/usm_tutar_builder.js?v=121",
+            "url": "https://bizimniyan.github.io/sac-widgets/usm_tutar_builder.js?v=122",
             "integrity": "",
             "ignoreIntegrity": true
         }
