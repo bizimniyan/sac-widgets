@@ -6,20 +6,20 @@
     "vendor": "Custom",
     "license": "",
     "id": "com.custom.sacpivot",
-    "version": "1.11.2",
+    "version": "1.12.0",
     "icon": "",
     "webcomponents": [
         {
             "kind": "main",
             "tag": "custom-sac-pivot",
-            "url": "https://bizimniyan.github.io/sac-widgets/sac_pivot.js?v=1112",
+            "url": "https://bizimniyan.github.io/sac-widgets/sac_pivot.js?v=1120",
             "integrity": "",
             "ignoreIntegrity": true
         },
         {
             "kind": "builder",
             "tag": "custom-sac-pivot-builder",
-            "url": "https://bizimniyan.github.io/sac-widgets/sac_pivot_builder.js?v=1112",
+            "url": "https://bizimniyan.github.io/sac-widgets/sac_pivot_builder.js?v=1120",
             "integrity": "",
             "ignoreIntegrity": true
         }
@@ -74,7 +74,7 @@
             "returnType": "string"
         },
         "setSelection": {
-            "description": "Satir boyutu secim kutusu: 11*, 11000001, 11000000-11009999; birden fazlasi ; ile, bos = tumu",
+            "description": "Satir boyutu secim kutusu: 11*, 11000001, 11000000-11009999, (boş), !kod = haric; birden fazlasi ; ile, bos = tumu",
             "parameters": [
                 { "name": "dimension", "type": "string", "description": "Satir boyutu ID" },
                 { "name": "values", "type": "string", "description": "Secim metni" }

@@ -2,6 +2,7 @@
     const TABULATOR_JS = "https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js";
     const FFLATE_JS = "https://unpkg.com/fflate@0.8.2/esm/browser.js";
     const MAX_HITS = 200;
+    const SEL_ROWS_MAX = 50;
     const NO_MASTER = new Set(["Date", "Version", "ZCURRENCY"]);
     const DIM_LABEL = { Date: "Dönem", Version: "Versiyon" };
     const DESC_ONLY = new Set(["ZPARAMETRE"]);
@@ -152,21 +153,36 @@
         if (/^\d+$/.test(a) && /^\d+$/.test(b) && a.length !== b.length) return a.length - b.length;
         return a < b ? -1 : a > b ? 1 : 0;
     };
+    const BLANK = "(boş)";
+    const quoteId = (id) => id === "" ? BLANK : /[-*?;,!"]/.test(id) ? `"${id}"` : id;
     const parseToken = (tok) => {
+        if (/^!?"/.test(tok)) return { low: tok, high: "" };
         const m = tok.indexOf("*") < 0 ? tok.match(/^(.+?)\s*-\s*(.+)$/) : null;
         return m ? { low: m[1].trim(), high: m[2].trim() } : { low: tok, high: "" };
     };
     const tokenText = (s) => s.high ? `${s.low}-${s.high}` : s.low;
+    // ";" ile token: kod, 11*, alt-üst, "tırnaklı tam değer", (boş); başında ! = hariç
     const matcher = (text) => {
-        const tests = splitList(text).map(parseToken).map(s => {
-            if (s.high) return id => cmpCode(id, s.low) >= 0 && cmpCode(id, s.high) <= 0;
-            if (/[*?]/.test(s.low)) {
+        const sets = { p: new Set(), n: new Set() };
+        const fns = { p: [], n: [] };
+        splitList(text).forEach(tok => {
+            const k = tok[0] === "!" ? "n" : "p";
+            const raw = k === "n" ? tok.slice(1).trim() : tok;
+            const q = raw.match(/^"(.*)"$/);
+            if (q) { sets[k].add(q[1]); return; }
+            const s = parseToken(raw);
+            if (!s.low) return;
+            if (s.high) fns[k].push(id => cmpCode(id, s.low) >= 0 && cmpCode(id, s.high) <= 0);
+            else if (/[*?]/.test(s.low)) {
                 const re = new RegExp("^" + s.low.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$", "i");
-                return id => re.test(id);
-            }
-            return id => id === s.low;
+                fns[k].push(id => re.test(id));
+            } else sets[k].add(s.low === BLANK ? "" : s.low);
         });
-        return tests.length ? id => tests.some(t => t(id)) : null;
+        const hasP = sets.p.size > 0 || fns.p.length > 0;
+        const hasN = sets.n.size > 0 || fns.n.length > 0;
+        if (!hasP && !hasN) return null;
+        const hit = (k, id) => sets[k].has(id) || fns[k].some(f => f(id));
+        return id => (!hasP || hit("p", id)) && !(hasN && hit("n", id));
     };
     const stopEvents = (el) => ["mousedown", "mouseup", "click", "dblclick", "keydown", "keyup", "keypress", "contextmenu"]
         .forEach(ev => el.addEventListener(ev, e => e.stopPropagation()));
@@ -426,6 +442,9 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
             .hits b { flex: 0 0 90px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
             .hits span { overflow: hidden; text-overflow: ellipsis; color: #444; }
             .hit-info { color: #888; margin-top: 3px; min-height: 14px; }
+            .hit-act { display: flex; gap: 4px; margin-top: 4px; }
+            .hit-act button { padding: 1px 8px; }
+            .sel-more { color: #666; padding: 2px 0; }
             .pop-f { display: flex; gap: 6px; padding: 6px 10px; border-top: 1px solid #eee; }
             .pop-f .sp { flex: 1; }
             .pop-f button { padding: 3px 12px; }
@@ -441,8 +460,9 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
                     <div class="pop-sec">Seçimler <small>(tek kod, 11* veya alt – üst aralık)</small></div>
                     <div id="selRows" class="sel-rows"></div>
                     <button id="addRow" class="link">+ satır</button>
-                    <div class="pop-sec"><span id="popSearchLbl"></span> <small>(kod veya tanım; işaretle = seçimlere ekle)</small></div>
+                    <div class="pop-sec"><span id="popSearchLbl"></span> <small>(kod veya tanım; tik kaldır = hariç tut)</small></div>
                     <input id="search" type="text" placeholder="kod veya tanım">
+                    <div class="hit-act"><button id="hitAll">Tümünü seç</button><button id="hitNone">Tümünü kaldır</button></div>
                     <div id="hits" class="hits"></div>
                     <div id="hitInfo" class="hit-info"></div>
                 </div>
@@ -1242,14 +1262,26 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
             stopEvents(this._pop);
             $("popClose").addEventListener("click", () => this._closePopup());
             $("popCancel").addEventListener("click", () => this._closePopup());
-            $("popClear").addEventListener("click", () => { this._selEdit = []; this._renderSelRows(); this._renderHits(); });
+            $("popClear").addEventListener("click", () => { this._selEdit = [{ low: "", high: "" }]; this._rowsChanged(true); });
             $("popOk").addEventListener("click", () => {
-                this._readSelRows();
+                if (this._genTokens && !this._checked.size) {
+                    this._hitInfoEl.textContent = "En az bir değer seçin.";
+                    return;
+                }
+                if (!this._genTokens) this._readSelRows();
+                const text = this._genTokens ? this._genTokens.join("; ") : this._selEdit.filter(s => s.low).map(tokenText).join("; ");
                 this._closePopup();
-                this._setSel(this._rowDims[this._popIdx].id, this._selEdit.filter(s => s.low).map(tokenText).join("; "));
+                this._setSel(this._rowDims[this._popIdx].id, text);
+            });
+            $("hitAll").addEventListener("click", () => this._checkMatches(true));
+            $("hitNone").addEventListener("click", () => this._checkMatches(false));
+            this._selRowsEl.addEventListener("input", () => {
+                clearTimeout(this._rowsTimer);
+                this._rowsTimer = setTimeout(() => this._rowsChanged(false), 200);
             });
             $("addRow").addEventListener("click", () => {
                 this._readSelRows();
+                this._genTokens = null;
                 this._selEdit.push({ low: "", high: "" });
                 this._renderSelRows();
                 const inputs = this._selRowsEl.querySelectorAll("input");
@@ -1260,14 +1292,9 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
                 this._searchTimer = setTimeout(() => this._search(), 200);
             });
             this._hitsEl.addEventListener("change", (e) => {
-                const id = e.target.value;
-                this._readSelRows();
-                if (e.target.checked) {
-                    if (!this._selEdit.some(s => !s.high && s.low === id)) this._selEdit.push({ low: id, high: "" });
-                } else {
-                    this._selEdit = this._selEdit.filter(s => s.high || s.low !== id);
-                }
-                this._renderSelRows();
+                if (e.target.checked) this._checked.add(e.target.value);
+                else this._checked.delete(e.target.value);
+                this._checksChanged();
             });
             this._pop.addEventListener("keydown", (e) => { if (e.key === "Escape") this._closePopup(); });
         }
@@ -1284,6 +1311,9 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
             this._pop.style.left = Math.max(8, Math.min(btn.getBoundingClientRect().left - wrap.left - 200, wrap.width - 468)) + "px";
             this._selEdit = splitList(this._sel.get(d.id)).map(parseToken);
             if (!this._selEdit.length) this._selEdit.push({ low: "", high: "" });
+            this._genTokens = null;
+            const m = this._match.get(d.id);
+            this._checked = new Set(this._dimIds.get(i).filter(id => !m || m(id)));
             this._renderSelRows();
             this._searchEl.value = "";
             this._pop.hidden = false;
@@ -1295,7 +1325,35 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
             this._pop.hidden = true;
         }
 
+        _rowsChanged(render) {
+            if (!render) this._readSelRows();
+            this._genTokens = null;
+            const m = matcher(this._selEdit.filter(s => s.low).map(tokenText).join("; "));
+            this._checked = new Set((this._dimIds.get(this._popIdx) || []).filter(id => !m || m(id)));
+            if (render) this._renderSelRows();
+            this._renderHits();
+        }
+
+        _checksChanged() {
+            const all = this._dimIds.get(this._popIdx) || [];
+            const on = this._checked;
+            const pick = on.size <= all.length - on.size;
+            this._genTokens = on.size === all.length ? [] : all.filter(id => on.has(id) === pick).map(id => (pick ? "" : "!") + quoteId(id));
+            this._selEdit = this._genTokens.length ? this._genTokens.map(t => ({ low: t, high: "" })) : [{ low: "", high: "" }];
+            this._renderSelRows();
+            this._renderHits();
+        }
+
+        _checkMatches(on) {
+            (this._matches || []).forEach(id => { if (on) this._checked.add(id); else this._checked.delete(id); });
+            this._checksChanged();
+        }
+
         _readSelRows() {
+            if (this._genTokens && this._genTokens.length > SEL_ROWS_MAX) {
+                this._selEdit = this._genTokens.map(t => ({ low: t, high: "" }));
+                return;
+            }
             this._selEdit = Array.from(this._selRowsEl.querySelectorAll(".sel-row")).map(r => {
                 const [lo, hi] = r.querySelectorAll("input");
                 return { low: lo.value.trim(), high: hi.value.trim() };
@@ -1304,6 +1362,14 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
 
         _renderSelRows() {
             this._selRowsEl.innerHTML = "";
+            if (this._genTokens && this._genTokens.length > SEL_ROWS_MAX) {
+                const all = (this._dimIds.get(this._popIdx) || []).length;
+                const info = document.createElement("div");
+                info.className = "sel-more";
+                info.textContent = `Listeden ${nf.format(this._checked.size)} / ${nf.format(all)} değer seçili`;
+                this._selRowsEl.appendChild(info);
+                return;
+            }
             this._selEdit.forEach((s, i) => {
                 const row = document.createElement("div");
                 row.className = "sel-row";
@@ -1314,8 +1380,8 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
                 row.querySelector("button").addEventListener("click", () => {
                     this._readSelRows();
                     this._selEdit.splice(i, 1);
-                    this._renderSelRows();
-                    this._renderHits();
+                    if (!this._selEdit.length) this._selEdit.push({ low: "", high: "" });
+                    this._rowsChanged(true);
                 });
                 this._selRowsEl.appendChild(row);
             });
@@ -1332,27 +1398,23 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
             const all = this._dimIds.get(this._popIdx) || [];
             let hits;
             if (!term) {
-                hits = all.slice(0, MAX_HITS + 1);
+                hits = all;
             } else {
                 const lower = term.toLocaleLowerCase("tr-TR");
                 const m = /[*?]/.test(term) ? matcher(term) : null;
-                hits = [];
-                for (let i = 0; i < all.length && hits.length <= MAX_HITS; i++) {
-                    const id = all[i];
-                    if (m ? m(id) : id.indexOf(term) >= 0 || this._popLabel(id).toLocaleLowerCase("tr-TR").indexOf(lower) >= 0) hits.push(id);
-                }
+                hits = all.filter(id => m ? m(id) : id.indexOf(term) >= 0 || (id === "" ? BLANK : this._popLabel(id)).toLocaleLowerCase("tr-TR").indexOf(lower) >= 0);
             }
             const more = hits.length > MAX_HITS;
+            this._matches = hits;
             this._hits = hits.slice(0, MAX_HITS);
             this._renderHits();
-            this._hitInfoEl.textContent = this._hits.length
-                ? `${this._hits.length} değer${more ? ` (ilk ${MAX_HITS} gösteriliyor, aramayı daraltın)` : ` / ${all.length}`}`
+            this._hitInfoEl.textContent = hits.length
+                ? `${nf.format(hits.length)} değer${term ? ` / ${nf.format(all.length)}` : ""}${more ? ` (ilk ${MAX_HITS} gösteriliyor; Tümünü seç/kaldır hepsine uygulanır)` : ""}`
                 : "Eşleşen değer yok.";
         }
 
         _renderHits() {
             if (!this._hits) return;
-            const singles = new Set((this._selEdit || []).filter(s => !s.high).map(s => s.low));
             this._hitsEl.innerHTML = "";
             const frag = document.createDocumentFragment();
             this._hits.forEach(id => {
@@ -1360,8 +1422,8 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
                 label.innerHTML = `<input type="checkbox"><b></b><span></span>`;
                 const cb = label.querySelector("input");
                 cb.value = id;
-                cb.checked = singles.has(id);
-                label.querySelector("b").textContent = id;
+                cb.checked = this._checked.has(id);
+                label.querySelector("b").textContent = id === "" ? BLANK : id;
                 label.querySelector("span").textContent = this._popLabel(id);
                 frag.appendChild(label);
             });
