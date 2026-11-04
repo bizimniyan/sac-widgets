@@ -12,6 +12,9 @@
     const TUTAR_MEASURES = ["ZTUTAR", "ZTUTAR_TRY", "ZTUTAR_EUR", "ZTUTAR_USD"];
     // türetilmiş özellik: Bütçe kodunun üst kodu (G11-01 -> G11), tanımı aynı boyutun master'ından
     const DERIVED = { UST_GRUP: "ZBUTCE_KODU" };
+    // seçili parametrelerin toplamı ayrı bir parametre gibi (en başta)
+    const TOT_P = "#TOPLAM";
+    const TOT_P_LABEL = "Toplam Parametre";
     const SEP = "\u0001";
     const BLOCK = 200;
     const ROW_H = 26;
@@ -392,6 +395,10 @@
 
         _setSel(dim, text) {
             if (!dim) return;
+            if (dim === "ZPARAMETRE" && this._colAll.has(dim) && this._rowDims.some(d => d.id === dim)) {
+                this._setColSel(dim, this._colAll.get(dim), text);
+                return;
+            }
             const v = splitList(text).join("; ");
             if (v === (this._sel.get(dim) || "")) return;
             if (v) this._sel.set(dim, v);
@@ -465,9 +472,11 @@
             filter = and(filter, budget);
             this._baseFilter = filter;
             this._mIds = Array.from(new Set(mIds));
+            const rowParam = p.rows.filter(d => d.id === "ZPARAMETRE" && !p.cols.some(c => c.id === d.id));
             const colDims = p.cols.filter(d => d.id !== "Date" && !d.attr && [].indexOf(d.base) < 0);
-            Array.from(this._colSel.keys()).forEach(k => { if (!colDims.some(d => d.id === k)) this._colSel.delete(k); });
-            this._renderColBtns(colDims);
+            const btnDims = colDims.concat(rowParam);
+            Array.from(this._colSel.keys()).forEach(k => { if (!btnDims.some(d => d.id === k)) this._colSel.delete(k); });
+            this._renderColBtns(btnDims);
             filter = and(filter, Array.from(this._colSel.values()).map(c => c.clause).join(" and "));
             const attrFilters = parseItems(Array.from(p.filters.keys()).filter(d => d.indexOf(".") > 0).join(","));
             const items = p.rows.concat(p.cols, attrFilters);
@@ -514,6 +523,11 @@
                     if (attrs.has(d) && m.size) attrs.get(d).forEach(a => { if (DERIVED[a]) this._desc.set(`${d}.${a}`, m); });
                 });
                 colDims.forEach(d => { if (!this._colSel.has(d.id)) this._colAll.set(d.id, Array.from(new Set(colRecs.map(r => r[d.id]).filter(v => v !== undefined && v !== null))).sort(cmpCode)); });
+                rowParam.forEach(d => { if (!this._colSel.has(d.id)) this._colAll.set(d.id, Array.from(new Set(rowRecs.map(r => r[d.id]).filter(v => v !== undefined && v !== null))).sort(cmpCode)); });
+                if (p.rows.concat(p.cols).some(d => d.id === "ZPARAMETRE")) {
+                    if (!this._desc.has("ZPARAMETRE")) this._desc.set("ZPARAMETRE", new Map());
+                    this._desc.get("ZPARAMETRE").set(TOT_P, TOT_P_LABEL);
+                }
                 this._buildData(Object.assign({}, p, { rows: [] }), [colRecs], attrFilters);
                 const colState = { cols: this._cols, totCols: this._totCols, vUsed: this._vUsed };
                 this._buildData(Object.assign({}, p, { cols: [] }), [rowRecs], attrFilters);
@@ -675,6 +689,8 @@
             const af = attrFilters.map(d => [d, new Set(p.filters.get(d.id))]);
             const withTotal = p.cols.length > 0;
             const pIdx = p.cols.length > 1 ? p.cols.findIndex(d => d.id === "ZPARAMETRE") : -1;
+            const pcIdx = p.cols.findIndex(d => d.id === "ZPARAMETRE");
+            const prIdx = pcIdx < 0 ? p.rows.findIndex(d => d.id === "ZPARAMETRE") : -1;
             const tParams = fixed ? fixed.tParams : new Map();
             const tUsed = new Set();
             const byRow = fixed ? fixed.byRow : new Map();
@@ -690,12 +706,12 @@
             const freeVals = [];
             const vUsed = new Set();
             if (!fixed) this._vUsed = vUsed;
-            const add = (row, ci, mi, x) => {
+            const add = (row, ci, mi, x, noT) => {
                 if (!row || (only && !only.has(row.key))) return;
                 const f = `v${ci}_${mi}`;
                 row[f] = (row[f] || 0) + x;
                 vUsed.add(f);
-                if (!withTotal) return;
+                if (!withTotal || noT) return;
                 let tf = "t_" + mi;
                 if (pIdx >= 0) {
                     const pv = (byCi ? byCi.get(ci) : cols[ci]).vals[pIdx];
@@ -717,8 +733,19 @@
                     const d = this._desc.get(rowIds[i]);
                     if (d) row[`r${i}d`] = d.get(v) || "";
                 });
+                if (prIdx >= 0 && rvals[prIdx] === TOT_P) row._ptot = true;
                 byRow.set(rk, row);
                 return row;
+            };
+            const colOf = (cvals) => {
+                const ck = cvals.join(SEP);
+                let ci = colIndex.get(ck);
+                if (ci === undefined) {
+                    if (fixed) return undefined;
+                    colIndex.set(ck, ci = cols.length);
+                    cols.push({ ci, vals: cvals });
+                }
+                return ci;
             };
             const keyOf = (rvals, wild) => rvals.map((v, i) => wild.indexOf(i) >= 0 ? "" : v).join(SEP);
             valueSets.forEach(recs => recs.forEach(r => {
@@ -729,17 +756,15 @@
                 if (nums.every(x => x === null)) return;
                 for (let k = 0; k < af.length; k++) if (!af[k][1].has(this._valueOf(af[k][0], r))) return;
                 const cvals = p.cols.map(d => this._valueOf(d, r));
-                const ck = cvals.join(SEP);
-                let ci = colIndex.get(ck);
-                if (ci === undefined) {
-                    if (fixed) return;
-                    colIndex.set(ck, ci = cols.length);
-                    cols.push({ ci, vals: cvals });
-                }
+                const ci = colOf(cvals);
+                if (ci === undefined) return;
+                const ciT = pcIdx >= 0 ? colOf(cvals.map((v, i) => i === pcIdx ? TOT_P : v)) : undefined;
                 const rvals = p.rows.map(d => this._valueOf(d, r));
                 const curWild = curIdx >= 0 && isNone(rvals[curIdx]) ? [curIdx] : [];
                 const supWild = supOn && SUP_PARAMS.has(r.ZPARAMETRE) ? [matIdx, curIdx].filter(i => i >= 0 && isNone(rvals[i])) : [];
                 const rk = rvals.join(SEP);
+                const rvT = prIdx >= 0 ? rvals.map((v, i) => i === prIdx ? TOT_P : v) : null;
+                const rkT = rvT && rvT.join(SEP);
                 let row = null;
                 nums.forEach((x, mi) => {
                     if (x === null) return;
@@ -750,6 +775,8 @@
                     }
                     if (!row) row = byRow.get(rk) || newRow(rk, rvals);
                     add(row, ci, mi, x);
+                    if (ciT !== undefined) add(row, ciT, mi, x, pIdx < 0);
+                    if (rvT) add(byRow.get(rkT) || newRow(rkT, rvT), ci, mi, x);
                 });
             }));
             if (freeVals.length) {
@@ -777,6 +804,7 @@
                 const fixed = p.filters.get(d);
                 const pos = fixed ? new Map(fixed.map((v, i) => [v, i])) : null;
                 return (a, b) => {
+                    if (a !== b && (a === TOT_P || b === TOT_P)) return a === TOT_P ? -1 : 1;
                     if (pos) {
                         const pa = pos.has(a) ? pos.get(a) : 1e9, pb = pos.has(b) ? pos.get(b) : 1e9;
                         if (pa !== pb) return pa - pb;
@@ -797,7 +825,8 @@
             const rows = Array.from(byRow.values());
             rows.sort((a, b) => {
                 for (let i = 0; i < rowIds.length; i++) {
-                    const c = cmpCode(a["r" + i], b["r" + i]);
+                    const x = a["r" + i], y = b["r" + i];
+                    const c = i === prIdx && x !== y && (x === TOT_P || y === TOT_P) ? (x === TOT_P ? -1 : 1) : cmpCode(x, y);
                     if (c) return c;
                 }
                 return 0;
@@ -892,6 +921,7 @@
             fields.forEach(f => { row[f] = null; });
             if (!this._full) return row;
             shown.forEach(r => {
+                if (r._ptot) return;
                 for (let i = 0; i < fields.length; i++) {
                     const v = r[fields[i]];
                     if (v !== undefined) row[fields[i]] = (row[fields[i]] || 0) + v;
@@ -901,7 +931,7 @@
         }
 
         _applyFilter() {
-            this._inputs.forEach((input, dim) => input.classList.toggle("on", this._sel.has(dim)));
+            this._inputs.forEach((input, dim) => input.classList.toggle("on", this._sel.has(dim) || (dim === "ZPARAMETRE" && this._colSel.has(dim))));
             if (!this._table) return;
             this._shown = this._filtered();
             this._table.replaceData([this._totalRow()].concat(this._shown)).then(() => this._loadVisible());
@@ -962,8 +992,9 @@
             const box = el.querySelector(".kod-f");
             const input = box.querySelector("input");
             const btn = box.querySelector("button");
-            input.value = this._sel.get(d.id) || "";
-            input.classList.toggle("on", this._sel.has(d.id));
+            const pc = d.id === "ZPARAMETRE" ? this._colSel.get(d.id) : null;
+            input.value = pc ? pc.text : this._sel.get(d.id) || "";
+            input.classList.toggle("on", !!pc || this._sel.has(d.id));
             this._inputs.set(d.id, input);
             stopEvents(box);
             input.addEventListener("keydown", e => {
@@ -1119,6 +1150,7 @@
 
         _openPopup(i, btn) {
             const d = this._rowDims[i];
+            if (d.id === "ZPARAMETRE" && this._colAll.has(d.id)) return this._openColPopup(d, btn);
             if (!this._dimIds.has(i)) this._dimIds.set(i, Array.from(new Set(this._rows.map(r => r["r" + i]))).sort(cmpCode));
             const input = this._inputs.get(d.id);
             if (input) input.value = this._sel.get(d.id) || "";
