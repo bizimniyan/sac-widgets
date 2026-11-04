@@ -17,7 +17,7 @@
     const EXPORT_ROWS = 200000;
     const XLSX_MAX_ROWS = 1048575;
     const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-    const XLSX_HEAD = ["Seviye", "Ana Malzeme", "Üst Kod", "Kod", "Açıklama", "Grup 1", "Grup 2", "Tür"];
+    const XLSX_HEAD = ["Seviye", "Ana Malzeme", "Üst Kod", "Kod", "Açıklama", "Grup 1", "Grup 2", "MRP Sorumlusu", "Tür"];
 
     const loadScript = (src) => new Promise((resolve, reject) => {
         if (window.Tabulator) return resolve();
@@ -365,11 +365,12 @@
             this._ids = [];
             this._desc = { ZMALZEME: new Map(), ZBILESEN: new Map(), ZMASRAF_OGESI: new Map() };
             this._attr = { ZMALZEME: new Map(), ZBILESEN: new Map() };
-            this._grp = { 1: null, 2: null };
+            this._grp = { 1: null, 2: null, 3: null };
             this._gHeader = {};
             this._buildKodHeader();
             this._buildGroupHeader(1, "Grup 1");
             this._buildGroupHeader(2, "Grup 2");
+            this._buildGroupHeader(3, "MRP Sorumlusu");
             this._buildDescHeader();
             this._initPopup();
             this._initGroupPopup();
@@ -381,6 +382,10 @@
 
         setGroup2Filter(values) {
             this._setGroup(2, values);
+        }
+
+        setMrpFilter(values) {
+            this._setGroup(3, values);
         }
 
         _setGroup(level, values) {
@@ -666,7 +671,7 @@
             const line = (lvl, top, parent, id, kind, vals) => {
                 const dim = kind === "M" ? "ZMALZEME" : kind === "B" ? "ZBILESEN" : "ZMASRAF_OGESI";
                 const a = this._attrOf(dim, id);
-                const cells = [lvl, top, parent, id, this._desc[dim].get(id) || "", a.g1, a.g2, TYPE_LABEL[kind]];
+                const cells = [lvl, top, parent, id, this._desc[dim].get(id) || "", a.g1, a.g2, a.g3, TYPE_LABEL[kind]];
                 const all = this._addTotals(Object.assign(this._altFor(kind, id, vals), vals));
                 const fields = this._expFields;
                 for (let i = 0; i < fields.length; i++) {
@@ -803,14 +808,16 @@
             const comps = this._compSet;
             const g1 = this._attrsReady ? this._grp[1] : null;
             const g2 = this._attrsReady ? this._grp[2] : null;
+            const g3 = this._attrsReady ? this._grp[3] : null;
             const attr = this._attr.ZMALZEME;
             const u = this._compMatch ? this._usedSet || new Set() : null;
             const base = this._liveIds || this._allIds;
-            if (!m && !t && !g1 && !g2 && !u) return base.slice();
+            if (!m && !t && !g1 && !g2 && !g3 && !u) return base.slice();
             return base.filter(id => (!m || m(id)) && (!u || u.has(id)) &&
                 (!t || ty.has(parents.has(id) ? (comps.has(id) ? "Y" : "M") : "H")) &&
                 (!g1 || g1.has((attr.get(id) || {}).g1 || "")) &&
-                (!g2 || g2.has((attr.get(id) || {}).g2 || "")));
+                (!g2 || g2.has((attr.get(id) || {}).g2 || "")) &&
+                (!g3 || g3.has((attr.get(id) || {}).g3 || "")));
         }
 
         async _loadParentAttrs(token) {
@@ -821,7 +828,7 @@
             }
             if (token !== this._token) return;
             this._attrsReady = true;
-            if (this._grp[1] || this._grp[2]) this._applyFilter();
+            if (this._grp[1] || this._grp[2] || this._grp[3]) this._applyFilter();
         }
 
         async _loadMasterRanges(dim, ids, token) {
@@ -835,7 +842,7 @@
                 cur.push(id);
             });
             if (cur.length) segs.push(cur);
-            const select = this._attr[dim] ? "ID,Description,MALZ_GRUP1,MALZ_GRUP2" : "ID,Description";
+            const select = this._attr[dim] ? "ID,Description,MALZ_GRUP1,MALZ_GRUP2,MRP_CONTR" : "ID,Description";
             await runPool(segs.map(seg => async () => {
                 if (token !== this._token) return;
                 const rows = await this._get(`${dim}Master`, {
@@ -848,12 +855,12 @@
 
         _storeMaster(dim, r) {
             this._desc[dim].set(r.ID, r.Description || "");
-            if (this._attr[dim]) this._attr[dim].set(r.ID, { g1: r.MALZ_GRUP1 || "", g2: r.MALZ_GRUP2 || "" });
+            if (this._attr[dim]) this._attr[dim].set(r.ID, { g1: r.MALZ_GRUP1 || "", g2: r.MALZ_GRUP2 || "", g3: r.MRP_CONTR || "" });
         }
 
         _attrOf(dim, id) {
             const a = this._attr[dim] && this._attr[dim].get(id);
-            return a ? { g1: a.g1, g2: a.g2 } : { g1: null, g2: null };
+            return a ? { g1: a.g1, g2: a.g2, g3: a.g3 } : { g1: null, g2: null, g3: null };
         }
 
         _setFilter(text) {
@@ -884,7 +891,7 @@
         }
 
         _totalRow() {
-            const row = { key: "TOTAL", name: "Toplam", type: "", g1: "", g2: "", desc: this._matValsError || null, _kind: "T" };
+            const row = { key: "TOTAL", name: "Toplam", type: "", g1: "", g2: "", g3: "", desc: this._matValsError || null, _kind: "T" };
             this._valueFields.forEach(f => { row[f] = null; });
             return Object.assign(row, this._computeTotal() || {});
         }
@@ -1098,7 +1105,7 @@
         async _loadDescriptions(dim, ids) {
             const cache = this._desc[dim];
             const missing = ids.filter(id => !cache.has(id));
-            const select = this._attr[dim] ? "ID,Description,MALZ_GRUP1,MALZ_GRUP2" : "ID,Description";
+            const select = this._attr[dim] ? "ID,Description,MALZ_GRUP1,MALZ_GRUP2,MRP_CONTR" : "ID,Description";
             await Promise.all(chunks(missing, CHUNK).map(async (part) => {
                 const rows = await this._get(`${dim}Master`, { $select: select, $filter: orEq("ID", part) });
                 part.forEach(id => this._storeMaster(dim, { ID: id }));
@@ -1250,7 +1257,7 @@
                 if (this._attrPromise) await this._attrPromise;
                 if (!this._attrsReady || this._gpop.hidden || this._gLevel !== level) return;
             }
-            const key = level === 1 ? "g1" : "g2";
+            const key = "g" + level;
             const counts = new Map();
             (this._liveIds || this._allIds).forEach(id => {
                 const v = (this._attr.ZMALZEME.get(id) || {})[key] || "";
@@ -1452,6 +1459,7 @@
                 { title: "Açıklama", field: "desc", width: 260, frozen: true, formatter: descFormatter, titleFormatter: () => this._descHeaderEl },
                 { title: "Grup 1", field: "g1", width: 120, cssClass: "soft", titleFormatter: () => this._gHeader[1].el },
                 { title: "Grup 2", field: "g2", width: 170, cssClass: "soft", titleFormatter: () => this._gHeader[2].el },
+                { title: "MRP Sorumlusu", field: "g3", width: 130, cssClass: "soft", titleFormatter: () => this._gHeader[3].el },
                 { title: "Tür", field: "type", width: 75, cssClass: "soft" }
             ];
             this._valueFields = [];
@@ -1627,7 +1635,7 @@
                     const desc = dim ? this._desc[dim].get(cd._id) || "" : "";
                     if (dim === "ZBILESEN") {
                         const a = this._attrOf(dim, cd._id);
-                        if (desc !== cd.desc || a.g1 !== cd.g1 || a.g2 !== cd.g2) c.update({ desc, g1: a.g1, g2: a.g2 });
+                        if (desc !== cd.desc || a.g1 !== cd.g1 || a.g2 !== cd.g2 || a.g3 !== cd.g3) c.update({ desc, g1: a.g1, g2: a.g2, g3: a.g3 });
                     } else if (dim && desc !== cd.desc) {
                         c.update({ desc });
                     }

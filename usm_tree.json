@@ -6,20 +6,20 @@
     "vendor": "Custom",
     "license": "",
     "id": "com.custom.usmtree",
-    "version": "1.14.1",
+    "version": "1.15.0",
     "icon": "",
     "webcomponents": [
         {
             "kind": "main",
             "tag": "custom-usm-tree",
-            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree.js?v=1141",
+            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree.js?v=1150",
             "integrity": "",
             "ignoreIntegrity": true
         },
         {
             "kind": "builder",
             "tag": "custom-usm-tree-builder",
-            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree_builder.js?v=1141",
+            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree_builder.js?v=1150",
             "integrity": "",
             "ignoreIntegrity": true
         }
@@ -159,6 +159,16 @@
                     "name": "values",
                     "type": "string",
                     "description": "orn. DİĞER;ENDÜSTRİYEL"
+                }
+            ]
+        },
+        "setMrpFilter": {
+            "description": "MRP_CONTR filtresi: degerler ; ile, (boş) bos deger, bos metin = tumu",
+            "parameters": [
+                {
+                    "name": "values",
+                    "type": "string",
+                    "description": "orn. 001;002"
                 }
             ]
         },
