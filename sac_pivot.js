@@ -200,6 +200,12 @@
             #xls { flex: 0 0 auto; margin: 2px 6px; padding: 1px 8px; font: 11px Arial, sans-serif; cursor: pointer; border: 1px solid #dadada; background: #fff; border-radius: 3px; color: #444; }
             #xls:hover:not(:disabled) { background: #ffe8e8; }
             #xls:disabled { color: #999; cursor: default; }
+            #colSels { flex: 0 0 auto; display: flex; gap: 4px; }
+            .cbtn { margin: 2px 0; padding: 1px 8px; font: 11px Arial, sans-serif; cursor: pointer; border: 1px solid #dadada; background: #fff; border-radius: 3px; color: #444; white-space: nowrap; }
+            .cbtn:hover { background: #ffe8e8; }
+            .cbtn.on { border-color: #ff0000; background: #ffe8e8; }
+            .bud { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; margin-left: 6px; font: 10px Arial, sans-serif; color: #b0b0b0; cursor: pointer; }
+            .bud input { width: 11px; height: 11px; margin: 0; }
             #status.error { color: #bb0000; white-space: pre-wrap; }
             #table { flex: 1 1 auto; min-height: 0; font-size: 12px; }
             .tabulator { border: 0 !important; background: #fff !important; font-size: 12px; color: #333; }
@@ -270,7 +276,7 @@
             .pop-f .primary:hover { background: #ff3333; }
         </style>
         <div class="wrap">
-            <div class="bar"><label id="mSelWrap" hidden><select id="mSel" title="Measure"></select></label><button id="xls">Excel'e aktar</button><div id="status">Yükleniyor…</div></div>
+            <div class="bar"><label id="mSelWrap" hidden><select id="mSel" title="Measure"></select></label><button id="xls">Excel'e aktar</button><span id="colSels"></span><label class="bud" title="İşaretliyse sadece Date 000000, boş ve versiyonun bütçe başlangıç–bitiş dönemi"><input type="checkbox" id="bud" checked>bütçe</label><div id="status">Yükleniyor…</div></div>
             <div id="table"></div>
             <div id="pop" class="pop" hidden>
                 <div class="pop-h"><span id="popTitle"></span><button class="x" id="popClose" title="Kapat">×</button></div>
@@ -309,6 +315,12 @@
             TUTAR_MEASURES.forEach(id => this._mSel.add(new Option(id, id)));
             this._tutar = TUTAR_MEASURES[0];
             this._mSel.addEventListener("change", () => this.setMeasureSelection(this._mSel.value));
+            this._budget = true;
+            shadowRoot.getElementById("bud").addEventListener("change", (e) => { this._budget = e.target.checked; this._scheduleReload(); });
+            this._colSelsEl = shadowRoot.getElementById("colSels");
+            this._colSel = new Map();
+            this._colIds = new Map();
+            this._versions = new Map();
             this._table = null;
             this._token = 0;
             this._sel = new Map();
@@ -408,7 +420,7 @@
             SCRIPT_ONLY.forEach(([d]) => filters.delete(d));
             this._override.forEach((vals, dim) => { if (vals.length) filters.set(dim, vals); else filters.delete(dim); });
             const fl = Array.from(filters.entries()).sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
-            const sig = JSON.stringify([pid, rows, cols, measures, fl]);
+            const sig = JSON.stringify([pid, rows, cols, measures, fl, this._budget, Array.from(this._colSel.entries()).map(([k, c]) => [k, c.clause]).sort()]);
             return { pid, rows, cols, measures, filters, sig };
         }
 
@@ -442,8 +454,18 @@
                 this._setStatus(`Script ile verilmesi bekleniyor: ${missing.join(", ")}`);
                 return;
             }
+            // VersionMaster okunamazsa bütçe dönemi filtresiz devam
+            const budget = await this._budgetClause(p).catch(() => "");
+            if (token !== this._token) return;
             const mIds = p.measures.map(m => m.id);
-            const filter = and(Array.from(p.filters.entries()).filter(([d]) => d.indexOf(".") < 0).map(([d, vals]) => orEq(d, vals)).join(" and "), nzF(Array.from(new Set(mIds))));
+            let filter = and(Array.from(p.filters.entries()).filter(([d]) => d.indexOf(".") < 0).map(([d, vals]) => orEq(d, vals)).join(" and "), nzF(Array.from(new Set(mIds))));
+            filter = and(filter, budget);
+            this._baseFilter = filter;
+            this._mIds = Array.from(new Set(mIds));
+            const colDims = p.cols.filter(d => d.id !== "Date" && !d.attr && [].indexOf(d.base) < 0);
+            Array.from(this._colSel.keys()).forEach(k => { if (!colDims.some(d => d.id === k)) this._colSel.delete(k); });
+            this._renderColBtns(colDims);
+            filter = and(filter, Array.from(this._colSel.values()).map(c => c.clause).join(" and "));
             const attrFilters = parseItems(Array.from(p.filters.keys()).filter(d => d.indexOf(".") > 0).join(","));
             const items = p.rows.concat(p.cols, attrFilters);
             const dims = Array.from(new Set(items.map(d => d.base)));
@@ -1056,7 +1078,7 @@
                 if (!this._genTokens) this._readSelRows();
                 const text = this._genTokens ? this._genTokens.join("; ") : this._selEdit.filter(s => s.low).map(tokenText).join("; ");
                 this._closePopup();
-                this._setSel(this._rowDims[this._popIdx].id, text);
+                this._popCtx.apply(text);
             });
             $("hitAll").addEventListener("click", () => this._checkMatches(true));
             $("hitNone").addEventListener("click", () => this._checkMatches(false));
@@ -1086,19 +1108,88 @@
 
         _openPopup(i, btn) {
             const d = this._rowDims[i];
-            this._popIdx = i;
             if (!this._dimIds.has(i)) this._dimIds.set(i, Array.from(new Set(this._rows.map(r => r["r" + i]))).sort(cmpCode));
-            this._root.getElementById("popTitle").textContent = `${d.label} seçimi`;
-            this._root.getElementById("popSearchLbl").textContent = `${d.label} ara`;
             const input = this._inputs.get(d.id);
             if (input) input.value = this._sel.get(d.id) || "";
+            this._showPopup({ label: d.label, ids: this._dimIds.get(i), text: this._sel.get(d.id) || "", desc: this._desc.get(d.id), apply: (text) => this._setSel(d.id, text) }, btn);
+        }
+
+        _renderColBtns(dims) {
+            this._colSelsEl.innerHTML = "";
+            dims.forEach(d => {
+                const b = document.createElement("button");
+                b.className = "cbtn";
+                const c = this._colSel.get(d.id);
+                b.textContent = `${d.label}: ${!c ? "Tümü" : c.on === 1 ? c.first : `${c.on} / ${c.all} seçili`} ▾`;
+                b.title = c ? c.text : "";
+                b.classList.toggle("on", !!c);
+                b.addEventListener("click", () => this._openColPopup(d, b));
+                this._colSelsEl.appendChild(b);
+            });
+        }
+
+        async _openColPopup(d, btn) {
+            const other = Array.from(this._colSel.entries()).filter(([k]) => k !== d.id).map(([, c]) => c.clause).join(" and ");
+            const filter = and(this._baseFilter, other);
+            const key = d.id + "|" + filter;
+            if (!this._colIds.has(key)) {
+                const text = btn.textContent;
+                btn.textContent = `${d.label}: yükleniyor…`;
+                try {
+                    const rows = await this._get("FactDataAggregation", { $select: [d.id].concat(this._mIds).join(","), $filter: filter });
+                    this._colIds.set(key, Array.from(new Set(rows.map(r => r[d.id]).filter(v => v !== undefined && v !== null))).sort(cmpCode));
+                } catch (e) {
+                    this._setStatus(`${d.label} değerleri okunamadı: ${errText(e)}`, true);
+                    return;
+                } finally {
+                    btn.textContent = text;
+                }
+            }
+            const ids = this._colIds.get(key);
+            const c = this._colSel.get(d.id);
+            this._showPopup({ label: d.label, ids, text: c ? c.text : "", desc: this._desc.get(d.base), apply: (text) => this._setColSel(d.id, ids, text) }, btn);
+        }
+
+        _setColSel(dim, ids, text) {
+            const v = splitList(text).join("; ");
+            const m = matcher(v);
+            const on = m ? ids.filter(m) : ids;
+            if (!m || on.length === ids.length) this._colSel.delete(dim);
+            else {
+                const off = ids.filter(id => !m(id));
+                const clause = !on.length ? `${dim} eq '#yok#'` : on.length <= off.length ? orEq(dim, on) : "(" + off.map(id => `${dim} ne '${q(id)}'`).join(" and ") + ")";
+                this._colSel.set(dim, { text: v, clause, on: on.length, all: ids.length, first: on[0] });
+            }
+            this._scheduleReload();
+        }
+
+        async _budgetClause(p) {
+            const vers = (this._budget && p.filters.get("Version")) || [];
+            if (!vers.length) return "";
+            if (!this._versions.has(p.pid)) {
+                const pr = this._get("VersionMaster", {}).then(rows => new Map(rows.map(r => [r.ID, { s: r.BUD_START || "", e: r.BUD_END || "" }])));
+                this._versions.set(p.pid, pr);
+                pr.catch(() => this._versions.delete(p.pid));
+            }
+            const vm = await this._versions.get(p.pid);
+            const parts = vers.map(v => {
+                const b = vm.get(v);
+                return b && b.s && b.e ? `(Version eq '${q(v)}' and (Date eq '000000' or Date eq '#' or (Date ge '${q(b.s)}' and Date le '${q(b.e)}')))` : `Version eq '${q(v)}'`;
+            });
+            return parts.length === 1 ? parts[0] : "(" + parts.join(" or ") + ")";
+        }
+
+        _showPopup(ctx, btn) {
+            this._popCtx = ctx;
+            this._root.getElementById("popTitle").textContent = `${ctx.label} seçimi`;
+            this._root.getElementById("popSearchLbl").textContent = `${ctx.label} ara`;
             const wrap = this._root.querySelector(".wrap").getBoundingClientRect();
             this._pop.style.left = Math.max(8, Math.min(btn.getBoundingClientRect().left - wrap.left - 200, wrap.width - 468)) + "px";
-            this._selEdit = splitList(this._sel.get(d.id)).map(parseToken);
+            this._selEdit = splitList(ctx.text).map(parseToken);
             if (!this._selEdit.length) this._selEdit.push({ low: "", high: "" });
             this._genTokens = null;
-            const m = this._match.get(d.id);
-            this._checked = new Set(this._dimIds.get(i).filter(id => !m || m(id)));
+            const m = matcher(ctx.text);
+            this._checked = new Set(ctx.ids.filter(id => !m || m(id)));
             this._renderSelRows();
             this._searchEl.value = "";
             this._pop.hidden = false;
@@ -1114,13 +1205,13 @@
             if (!render) this._readSelRows();
             this._genTokens = null;
             const m = matcher(this._selEdit.filter(s => s.low).map(tokenText).join("; "));
-            this._checked = new Set((this._dimIds.get(this._popIdx) || []).filter(id => !m || m(id)));
+            this._checked = new Set(this._popCtx.ids.filter(id => !m || m(id)));
             if (render) this._renderSelRows();
             this._renderHits();
         }
 
         _checksChanged() {
-            const all = this._dimIds.get(this._popIdx) || [];
+            const all = this._popCtx.ids;
             const on = this._checked;
             const pick = on.size <= all.length - on.size;
             this._genTokens = on.size === all.length ? [] : all.filter(id => on.has(id) === pick).map(id => (pick ? "" : "!") + quoteId(id));
@@ -1148,7 +1239,7 @@
         _renderSelRows() {
             this._selRowsEl.innerHTML = "";
             if (this._genTokens && this._genTokens.length > SEL_ROWS_MAX) {
-                const all = (this._dimIds.get(this._popIdx) || []).length;
+                const all = this._popCtx.ids.length;
                 const info = document.createElement("div");
                 info.className = "sel-more";
                 info.textContent = `Listeden ${nf.format(this._checked.size)} / ${nf.format(all)} değer seçili`;
@@ -1173,14 +1264,13 @@
         }
 
         _popLabel(id) {
-            const d = this._rowDims[this._popIdx];
-            const desc = this._desc.get(d.id);
+            const desc = this._popCtx.desc;
             return desc ? desc.get(id) || "" : "";
         }
 
         _search() {
             const term = this._searchEl.value.trim();
-            const all = this._dimIds.get(this._popIdx) || [];
+            const all = this._popCtx.ids;
             let hits;
             if (!term) {
                 hits = all;
