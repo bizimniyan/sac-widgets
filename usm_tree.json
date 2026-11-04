@@ -6,20 +6,20 @@
     "vendor": "Custom",
     "license": "",
     "id": "com.custom.usmtree",
-    "version": "1.15.0",
+    "version": "1.15.1",
     "icon": "",
     "webcomponents": [
         {
             "kind": "main",
             "tag": "custom-usm-tree",
-            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree.js?v=1150",
+            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree.js?v=1151",
             "integrity": "",
             "ignoreIntegrity": true
         },
         {
             "kind": "builder",
             "tag": "custom-usm-tree-builder",
-            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree_builder.js?v=1150",
+            "url": "https://bizimniyan.github.io/sac-widgets/usm_tree_builder.js?v=1151",
             "integrity": "",
             "ignoreIntegrity": true
         }
@@ -162,8 +162,8 @@
                 }
             ]
         },
-        "setMrpFilter": {
-            "description": "MRP_CONTR filtresi: degerler ; ile, (boş) bos deger, bos metin = tumu",
+        "setGroup3Filter": {
+            "description": "GRUPLAMA (MRP_CONTR) filtresi: degerler ; ile, (boş) bos deger, bos metin = tumu",
             "parameters": [
                 {
                     "name": "values",
