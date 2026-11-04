@@ -15,6 +15,7 @@
     // seçili parametrelerin toplamı ayrı bir parametre gibi (en başta)
     const TOT_P = "#TOPLAM";
     const TOT_P_LABEL = "Toplam Parametre";
+    const DEVRE_DIMS = new Set(["ZDEVRE", "ZBOLUM"]);
     const SEP = "\u0001";
     const BLOCK = 200;
     const ROW_H = 26;
@@ -211,6 +212,10 @@
             .cbtn.on { border-color: #ff0000; background: #ffe8e8; }
             .bud { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; margin-left: 6px; font: 10px Arial, sans-serif; color: #b0b0b0; cursor: pointer; }
             .bud input { width: 11px; height: 11px; margin: 0; }
+            .dvr { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; margin: 2px 0 2px 6px; padding: 1px 8px; font: 11px Arial, sans-serif; color: #444; cursor: pointer; border: 1px solid #dadada; border-radius: 3px; background: #fff; white-space: nowrap; }
+            .dvr:hover { background: #ffe8e8; }
+            .dvr.on { border-color: #ff0000; background: #ffe8e8; }
+            .dvr input { width: 13px; height: 13px; margin: 0; accent-color: #ff0000; cursor: pointer; }
             #status.error { color: #bb0000; white-space: pre-wrap; }
             #table { flex: 1 1 auto; min-height: 0; font-size: 12px; }
             .tabulator { border: 0 !important; background: #fff !important; font-size: 12px; color: #333; }
@@ -281,7 +286,7 @@
             .pop-f .primary:hover { background: #ff3333; }
         </style>
         <div class="wrap">
-            <div class="bar"><label id="mSelWrap" hidden><select id="mSel" title="Measure"></select></label><button id="xls">Excel'e aktar</button><span id="colSels"></span><label class="bud" title="İşaretliyse sadece Date 000000, boş ve versiyonun bütçe başlangıç–bitiş dönemi"><input type="checkbox" id="bud" checked>bütçe</label><div id="status">Yükleniyor…</div></div>
+            <div class="bar"><label id="mSelWrap" hidden><select id="mSel" title="Measure"></select></label><button id="xls">Excel'e aktar</button><span id="colSels"></span><label class="dvr" id="dvrWrap" title="İşaretliyse Dağıtım Devresi ve Bölümü satırlarda gösterilir"><input type="checkbox" id="dvr">Devre bazında göster</label><label class="bud" title="İşaretliyse sadece Date 000000, boş ve versiyonun bütçe başlangıç–bitiş dönemi"><input type="checkbox" id="bud" checked>bütçe</label><div id="status">Yükleniyor…</div></div>
             <div id="table"></div>
             <div id="pop" class="pop" hidden>
                 <div class="pop-h"><span id="popTitle"></span><button class="x" id="popClose" title="Kapat">×</button></div>
@@ -322,6 +327,12 @@
             this._mSel.addEventListener("change", () => this.setMeasureSelection(this._mSel.value));
             this._budget = true;
             shadowRoot.getElementById("bud").addEventListener("change", (e) => { this._budget = e.target.checked; this._scheduleReload(); });
+            this._devre = false;
+            shadowRoot.getElementById("dvr").addEventListener("change", (e) => {
+                this._devre = e.target.checked;
+                shadowRoot.getElementById("dvrWrap").classList.toggle("on", this._devre);
+                this._scheduleReload();
+            });
             this._colSelsEl = shadowRoot.getElementById("colSels");
             this._colSel = new Map();
             this._colIds = new Map();
@@ -418,7 +429,7 @@
 
         _loadParams() {
             const pid = (this.providerId || "").trim();
-            const rows = parseItems(this.rowDims);
+            const rows = parseItems(this.rowDims).filter(d => this._devre || !DEVRE_DIMS.has(d.base));
             const cols = parseItems(this.colDims);
             const measures = parseItems(this.measures);
             const tutarOn = !!String(this.measureSelect || "").trim();
