@@ -14,7 +14,7 @@
     const EXPORT_ROWS = 200000;
     const XLSX_MAX_ROWS = 1048575;
     const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-    const XLSX_HEAD = ["Seviye", "Ana Malzeme", "Üst Kod", "Masraf Öğesi", "Kod", "Açıklama", "Grup 1", "Grup 2", "GRUPLAMA", "Tür"];
+    const XLSX_HEAD = ["Seviye", "Ana Malzeme", "Üst Kod", "Masraf Öğesi", "Kod", "Açıklama", "Grup 1", "Grup 2", "Gruplama", "Tür"];
 
     const loadScript = (src) => new Promise((resolve, reject) => {
         if (window.Tabulator) return resolve();
@@ -400,7 +400,7 @@
             this._buildKodHeader();
             this._buildGroupHeader(1, "Grup 1");
             this._buildGroupHeader(2, "Grup 2");
-            this._buildGroupHeader(3, "GRUPLAMA");
+            this._buildGroupHeader(3, "Gruplama");
             this._buildDescHeader();
             this._initPopup();
             this._initGroupPopup();
@@ -1460,7 +1460,7 @@
                 { title: "Açıklama", field: "desc", width: 280, frozen: true, formatter: descFormatter, titleFormatter: () => this._descHeaderEl },
                 { title: "Grup 1", field: "g1", width: 120, cssClass: "soft", titleFormatter: () => this._gHeader[1].el },
                 { title: "Grup 2", field: "g2", width: 170, cssClass: "soft", titleFormatter: () => this._gHeader[2].el },
-                { title: "GRUPLAMA", field: "g3", width: 130, cssClass: "soft", titleFormatter: () => this._gHeader[3].el },
+                { title: "Gruplama", field: "g3", width: 130, cssClass: "soft", titleFormatter: () => this._gHeader[3].el },
                 { title: "Tür", field: "type", width: 95, cssClass: "soft" }
             ];
             this._valueFields = [];
