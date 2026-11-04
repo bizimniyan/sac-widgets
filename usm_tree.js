@@ -835,15 +835,11 @@
 
         async _loadMasterRanges(dim, ids, token) {
             const want = new Set(ids);
+            // sorgu başı gecikme satır sayısından pahalı: en büyük boşluklardan 6 aralığa böl, hepsi paralel
+            const gap = (a, b) => /^\d+$/.test(a) && /^\d+$/.test(b) && a.length === b.length ? Number(b) - Number(a) : Infinity;
+            const cuts = ids.slice(1).map((id, i) => [gap(ids[i], id), i + 1]).sort((a, b) => b[0] - a[0]).slice(0, 5).map(c => c[1]).sort((a, b) => a - b);
             const segs = [];
-            let cur = [];
-            ids.forEach(id => {
-                const prev = cur[cur.length - 1];
-                const far = prev !== undefined && (!/^\d+$/.test(id) || !/^\d+$/.test(prev) || id.length !== prev.length || Number(id) - Number(prev) > 500);
-                if (cur.length && (far || cur.length >= 300)) { segs.push(cur); cur = []; }
-                cur.push(id);
-            });
-            if (cur.length) segs.push(cur);
+            [0].concat(cuts).forEach((s, i, arr) => { const e = i + 1 < arr.length ? arr[i + 1] : ids.length; if (e > s) segs.push(ids.slice(s, e)); });
             const select = this._attr[dim] ? "ID,Description,MALZ_GRUP1,MALZ_GRUP2,MRP_CONTR" : "ID,Description";
             await runPool(segs.map(seg => async () => {
                 if (token !== this._token) return;
