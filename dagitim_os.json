@@ -1,0 +1,100 @@
+{
+    "name": "DagitimOncesiSonrasiWidget",
+    "description": "Gider dagitim oncesi / sonrasi (DGT0002 / DGT0003, CALC ve PREDGTM) karsilastirma tablosu",
+    "newInstancePrefix": "DagitimOncesiSonrasi",
+    "eula": "",
+    "vendor": "Custom",
+    "license": "",
+    "id": "com.custom.dagitimos",
+    "version": "1.0.0",
+    "icon": "",
+    "webcomponents": [
+        {
+            "kind": "main",
+            "tag": "custom-dagitim-os",
+            "url": "https://bizimniyan.github.io/sac-widgets/dagitim_os.js?v=100",
+            "integrity": "",
+            "ignoreIntegrity": true
+        },
+        {
+            "kind": "builder",
+            "tag": "custom-dagitim-os-builder",
+            "url": "https://bizimniyan.github.io/sac-widgets/dagitim_os_builder.js?v=100",
+            "integrity": "",
+            "ignoreIntegrity": true
+        }
+    ],
+    "properties": {
+        "width": { "type": "integer", "default": 1000 },
+        "height": { "type": "integer", "default": 500 },
+        "providerId": { "type": "string", "default": "C95nkt9eocd6e1fkif21rubvh2g" },
+        "rowDims": { "type": "string", "default": "ZMASRAF_YERI:Gönderen Masrafyeri, ZMASRAF_YERIALICI:Alıcı Masraf Yeri, ZMASRAF_CESIDI.UST_GRUP:Üst Grup, ZMASRAF_CESIDI.ZBUTCE_KODU:Bütçe Kodu, ZMASRAF_CESIDI.ZBUTCE_KODU_TANIM:Bütçe Kodu Tanımı, ZMASRAF_CESIDI.ZAKTIVITE:3lüKod" },
+        "colDims": { "type": "string", "default": "KOMBO, Date" },
+        "filters": { "type": "string", "default": "ZPARAMETRE=DGT0002,DGT0003; ZDATA_SOURCE=CALC,PREDGTM" },
+        "measures": { "type": "string", "default": "" },
+        "measureSelect": { "type": "string", "default": "x" },
+        "freezeCols": { "type": "string", "default": "4" }
+    },
+    "methods": {
+        "setVersion": {
+            "description": "Versiyonu verir ve veriyi yukler (zorunlu; verilmeden veri cekilmez)",
+            "parameters": [
+                { "name": "version", "type": "string", "description": "Versiyon ID, orn. public.2027BUD_01" }
+            ]
+        },
+        "setCompanyCode": {
+            "description": "Sirket kodunu verir ve veriyi yukler (zorunlu; bos = hepsi, virgulle coklu)",
+            "parameters": [
+                { "name": "companyCode", "type": "string", "description": "Sirket kodu, orn. 1100" }
+            ]
+        },
+        "setFilter": {
+            "description": "Sabit filtreyi degistirir ve veriyi yeniden yukler; bos deger = filtreyi kaldir",
+            "parameters": [
+                { "name": "dimension", "type": "string", "description": "Boyut ID, orn. Version, ZSIRKET_KODU" },
+                { "name": "values", "type": "string", "description": "Degerler virgulle, orn. 1100,1200" }
+            ]
+        },
+        "setMeasureSelection": {
+            "description": "Measure secimli acikken gosterilecek tutar: ZTUTAR, ZTUTAR_TRY, ZTUTAR_EUR, ZTUTAR_USD",
+            "parameters": [
+                { "name": "measure", "type": "string", "description": "orn. ZTUTAR_EUR" }
+            ]
+        },
+        "getMeasureSelection": {
+            "description": "Secili tutar measure'i",
+            "parameters": [],
+            "returnType": "string"
+        },
+        "getFilter": {
+            "description": "Boyutun gecerli sabit filtre degerleri (virgulle)",
+            "parameters": [
+                { "name": "dimension", "type": "string", "description": "Boyut ID" }
+            ],
+            "returnType": "string"
+        },
+        "setSelection": {
+            "description": "Satir boyutu secim kutusu: 110*, 110000001, 110000000-110009999, (boş), !kod = haric; birden fazlasi ; ile, bos = tumu",
+            "parameters": [
+                { "name": "dimension", "type": "string", "description": "Satir boyutu ID" },
+                { "name": "values", "type": "string", "description": "Secim metni" }
+            ]
+        },
+        "getSelection": {
+            "description": "Satir boyutunun gecerli secimi",
+            "parameters": [
+                { "name": "dimension", "type": "string", "description": "Satir boyutu ID" }
+            ],
+            "returnType": "string"
+        },
+        "exportExcel": {
+            "description": "Secime uyan satirlari Excel'e aktarir",
+            "parameters": []
+        },
+        "refresh": {
+            "description": "Veriyi yeniden yukler",
+            "parameters": []
+        }
+    },
+    "events": {}
+}
