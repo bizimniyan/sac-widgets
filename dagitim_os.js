@@ -484,7 +484,8 @@
             this._mIds = Array.from(new Set(mIds));
             const rowParam = p.rows.filter(d => d.id === "ZPARAMETRE" && !p.cols.some(c => c.id === d.id));
             const colDims = p.cols.filter(d => d.id !== "Date" && d.id !== "KOMBO" && !d.attr);
-            const btnDims = colDims.concat(rowParam);
+            const paramBtn = this._combo ? [{ id: "ZPARAMETRE", base: "ZPARAMETRE", attr: "", label: "Parametre" }] : [];
+            const btnDims = colDims.concat(rowParam, paramBtn);
             Array.from(this._colSel.keys()).forEach(k => { if (!btnDims.some(d => d.id === k)) this._colSel.delete(k); });
             this._renderColBtns(btnDims);
             filter = and(filter, Array.from(this._colSel.values()).map(c => c.clause).join(" and "));
@@ -537,7 +538,7 @@
                     this._desc.set("KOMBO", new Map(COMBOS.map(k => [k.id, k.label])));
                     this._desc.set("Date", new Map([[TOT_P, DATE_TOT_LABEL]]));
                 }
-                colDims.forEach(d => { if (!this._colSel.has(d.id)) this._colAll.set(d.id, Array.from(new Set(colRecs.map(r => r[d.id]).filter(v => v !== undefined && v !== null))).sort(cmpCode)); });
+                colDims.concat(paramBtn).forEach(d => { if (!this._colSel.has(d.id)) this._colAll.set(d.id, Array.from(new Set(colRecs.map(r => r[d.id]).filter(v => v !== undefined && v !== null))).sort(cmpCode)); });
                 rowParam.forEach(d => { if (!this._colSel.has(d.id)) this._colAll.set(d.id, Array.from(new Set(rowRecs.map(r => r[d.id]).filter(v => v !== undefined && v !== null))).sort(cmpCode)); });
                 if (p.rows.concat(p.cols).some(d => d.id === "ZPARAMETRE")) {
                     if (!this._desc.has("ZPARAMETRE")) this._desc.set("ZPARAMETRE", new Map());
