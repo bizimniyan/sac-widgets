@@ -484,11 +484,13 @@
             this._mIds = Array.from(new Set(mIds));
             const rowParam = p.rows.filter(d => d.id === "ZPARAMETRE" && !p.cols.some(c => c.id === d.id));
             const colDims = p.cols.filter(d => d.id !== "Date" && d.id !== "KOMBO" && !d.attr);
-            const paramBtn = this._combo ? [{ id: "ZPARAMETRE", base: "ZPARAMETRE", attr: "", label: "Parametre" }] : [];
-            const btnDims = colDims.concat(rowParam, paramBtn);
+            const comboBtn = this._combo ? [{ id: "KOMBO", base: "KOMBO", attr: "", label: "Parametre" }] : [];
+            if (this._combo) this._colAll.set("KOMBO", COMBOS.map(k => k.label));
+            const btnDims = colDims.concat(rowParam, comboBtn);
             Array.from(this._colSel.keys()).forEach(k => { if (!btnDims.some(d => d.id === k)) this._colSel.delete(k); });
             this._renderColBtns(btnDims);
-            filter = and(filter, Array.from(this._colSel.values()).map(c => c.clause).join(" and "));
+            // KOMBO seçimi sunucuya gitmez, kolonlar istemcide süzülür
+            filter = and(filter, Array.from(this._colSel.entries()).filter(([k]) => k !== "KOMBO").map(([, c]) => c.clause).join(" and "));
             const attrFilters = parseItems(Array.from(p.filters.keys()).filter(d => d.indexOf(".") > 0).join(","));
             const items = p.rows.concat(p.cols, attrFilters);
             const comboDims = this._combo ? ["ZDATA_SOURCE"] : [];
@@ -538,7 +540,7 @@
                     this._desc.set("KOMBO", new Map(COMBOS.map(k => [k.id, k.label])));
                     this._desc.set("Date", new Map([[TOT_P, DATE_TOT_LABEL]]));
                 }
-                colDims.concat(paramBtn).forEach(d => { if (!this._colSel.has(d.id)) this._colAll.set(d.id, Array.from(new Set(colRecs.map(r => r[d.id]).filter(v => v !== undefined && v !== null))).sort(cmpCode)); });
+                colDims.forEach(d => { if (!this._colSel.has(d.id)) this._colAll.set(d.id, Array.from(new Set(colRecs.map(r => r[d.id]).filter(v => v !== undefined && v !== null))).sort(cmpCode)); });
                 rowParam.forEach(d => { if (!this._colSel.has(d.id)) this._colAll.set(d.id, Array.from(new Set(rowRecs.map(r => r[d.id]).filter(v => v !== undefined && v !== null))).sort(cmpCode)); });
                 if (p.rows.concat(p.cols).some(d => d.id === "ZPARAMETRE")) {
                     if (!this._desc.has("ZPARAMETRE")) this._desc.set("ZPARAMETRE", new Map());
@@ -710,7 +712,9 @@
                 if (kIdx < 0) return [p.cols.map(d => this._valueOf(d, r))];
                 const base = p.cols.map(d => d.id === "KOMBO" ? "" : this._valueOf(d, r));
                 const out = [];
+                const ks = this._colSel.get("KOMBO");
                 COMBOS.forEach(k => {
+                    if (ks && ks.ids.indexOf(k.label) < 0) return;
                     if (r.ZPARAMETRE !== k.p || (k.ds && r.ZDATA_SOURCE !== k.ds)) return;
                     const v = base.slice();
                     v[kIdx] = k.id;
@@ -1209,7 +1213,7 @@
         }
 
         async _openColPopup(d, btn) {
-            const other = Array.from(this._colSel.entries()).filter(([k]) => k !== d.id).map(([, c]) => c.clause).join(" and ");
+            const other = Array.from(this._colSel.entries()).filter(([k]) => k !== d.id && k !== "KOMBO").map(([, c]) => c.clause).join(" and ");
             const filter = and(this._baseFilter, other);
             const key = d.id + "|" + filter;
             if (this._colAll.has(d.id)) this._colIds.set(key, this._colAll.get(d.id));
@@ -1239,7 +1243,7 @@
             else {
                 const off = ids.filter(id => !m(id));
                 const clause = !on.length ? `${dim} eq '#yok#'` : on.length <= off.length ? orEq(dim, on) : "(" + off.map(id => `${dim} ne '${q(id)}'`).join(" and ") + ")";
-                this._colSel.set(dim, { text: v, clause, on: on.length, all: ids.length, first: on[0] });
+                this._colSel.set(dim, { text: v, clause, on: on.length, all: ids.length, first: on[0], ids: on });
             }
             this._scheduleReload();
         }
