@@ -17,11 +17,11 @@
     const TOT_P_LABEL = "Toplam Parametre";
     // sütun kombinasyonları: parametre + veri kaynağı (ds boş = filtredeki tüm kaynaklar)
     const COMBOS = [
-        { id: "K1", label: "Gider Dağıtım Öncesi Toplam Kaynak", p: "DGT0002", ds: "" },
-        { id: "K2", label: "Gider Dağıtım Sonrası Toplam Kaynak", p: "DGT0003", ds: "" },
-        { id: "K3", label: "Gider Dağıtım Öncesi CALC", p: "DGT0002", ds: "CALC" },
-        { id: "K4", label: "Gider Dağıtım Öncesi PREDGTM", p: "DGT0002", ds: "PREDGTM" },
-        { id: "K5", label: "Gider Dağıtım Sonrası CALC", p: "DGT0003", ds: "CALC" }
+        { id: "K1", label: "Dağıtım Öncesi Toplam", p: "DGT0002", ds: "" },
+        { id: "K2", label: "Dağıtım Sonu", p: "DGT0003", ds: "" },
+        { id: "K3", label: "Dağıtım Öncesi", p: "DGT0002", ds: "CALC" },
+        { id: "K4", label: "Dağıtım Öncesi(Ön Dağıtım Sonucu)", p: "DGT0002", ds: "PREDGTM" },
+        { id: "K5", label: "Dağıtım Sonrası", p: "DGT0003", ds: "CALC" }
     ];
     const DATE_TOT_LABEL = "Dönem Toplam";
     const SEP = "\u0001";
