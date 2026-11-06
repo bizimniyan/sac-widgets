@@ -17,6 +17,7 @@
     const TOT_P = "#TOPLAM";
     const TOT_P_LABEL = "Toplam Parametre";
     const DEVRE_DIMS = new Set(["ZDEVRE", "ZBOLUM"]);
+    const GONDEREN_DIM = "ZMASRAF_YERI";
     const SEP = "\u0001";
     const BLOCK = 200;
     const ROW_H = 26;
@@ -287,7 +288,7 @@
             .pop-f .primary:hover { background: #ff3333; }
         </style>
         <div class="wrap">
-            <div class="bar"><label id="mSelWrap" hidden><select id="mSel" title="Measure"></select></label><button id="xls">Excel'e aktar</button><span id="colSels"></span><label class="dvr" id="dvrWrap" title="İşaretliyse Dağıtım Devresi ve Bölümü satırlarda gösterilir"><input type="checkbox" id="dvr">Devre bazında göster</label><label class="bud" title="İşaretliyse sadece Date 000000, boş ve versiyonun bütçe başlangıç–bitiş dönemi"><input type="checkbox" id="bud" checked>bütçe</label><div id="status">Yükleniyor…</div></div>
+            <div class="bar"><label id="mSelWrap" hidden><select id="mSel" title="Measure"></select></label><button id="xls">Excel'e aktar</button><span id="colSels"></span><label class="dvr" id="dvrWrap" title="İşaretliyse Dağıtım Devresi ve Bölümü satırlarda gösterilir"><input type="checkbox" id="dvr">Devre bazında göster</label><label class="dvr" id="gndWrap" title="İşaretliyse Gönderen Masraf Yeri satırlarda gösterilir"><input type="checkbox" id="gnd">Gönderen MY göster</label><label class="bud" title="İşaretliyse sadece Date 000000, boş ve versiyonun bütçe başlangıç–bitiş dönemi"><input type="checkbox" id="bud" checked>bütçe</label><div id="status">Yükleniyor…</div></div>
             <div id="table"></div>
             <div id="pop" class="pop" hidden>
                 <div class="pop-h"><span id="popTitle"></span><button class="x" id="popClose" title="Kapat">×</button></div>
@@ -332,6 +333,12 @@
             shadowRoot.getElementById("dvr").addEventListener("change", (e) => {
                 this._devre = e.target.checked;
                 shadowRoot.getElementById("dvrWrap").classList.toggle("on", this._devre);
+                this._scheduleReload();
+            });
+            this._gonderen = false;
+            shadowRoot.getElementById("gnd").addEventListener("change", (e) => {
+                this._gonderen = e.target.checked;
+                shadowRoot.getElementById("gndWrap").classList.toggle("on", this._gonderen);
                 this._scheduleReload();
             });
             this._colSelsEl = shadowRoot.getElementById("colSels");
@@ -430,7 +437,7 @@
 
         _loadParams() {
             const pid = (this.providerId || "").trim();
-            const rows = parseItems(this.rowDims).filter(d => this._devre || !DEVRE_DIMS.has(d.base));
+            const rows = parseItems(this.rowDims).filter(d => (this._devre || !DEVRE_DIMS.has(d.base)) && (this._gonderen || d.base !== GONDEREN_DIM));
             const cols = parseItems(this.colDims);
             const measures = parseItems(this.measures);
             const tutarOn = !!String(this.measureSelect || "").trim();
