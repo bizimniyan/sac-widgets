@@ -24,6 +24,8 @@
         { id: "K5", label: "Dağıtım Sonrası", p: "DGT0003", ds: "CALC" }
     ];
     const DATE_TOT_LABEL = "Dönem Toplam";
+    // KOMB yer tutucu üyeleri hiç gösterilmez
+    const HIDE_KOMB = ["ZMASRAF_YERI", "ZMASRAF_YERIALICI", "ZMASRAF_CESIDI"];
     const SEP = "\u0001";
     const BLOCK = 200;
     const ROW_H = 26;
@@ -480,6 +482,7 @@
             const mIds = p.measures.map(m => m.id);
             let filter = and(Array.from(p.filters.entries()).filter(([d]) => d.indexOf(".") < 0).map(([d, vals]) => orEq(d, vals)).join(" and "), nzF(Array.from(new Set(mIds))));
             filter = and(filter, budget);
+            filter = and(filter, HIDE_KOMB.map(d => `${d} ne 'KOMB'`).join(" and "));
             this._baseFilter = filter;
             this._mIds = Array.from(new Set(mIds));
             const rowParam = p.rows.filter(d => d.id === "ZPARAMETRE" && !p.cols.some(c => c.id === d.id));
