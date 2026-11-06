@@ -22,6 +22,8 @@
         { id: "K3", label: "Dağıtım Öncesi Pre Dağıtım", p: "DGT0002", ds: "PREDGTM" },
         { id: "K4", label: "Dağıtım Sonu", p: "DGT0003", ds: "" }
     ];
+    const PRE_K = COMBOS[2];
+    const NO_PRE_HIDE = new Set(["K2", "K3"]);
     const DATE_TOT_LABEL = "Dönem Toplam";
     // KOMB yer tutucu üyeleri hiç gösterilmez
     const HIDE_KOMB = ["ZMASRAF_YERI", "ZMASRAF_YERIALICI", "ZMASRAF_CESIDI"];
@@ -548,6 +550,9 @@
                     if (!this._desc.has("ZPARAMETRE")) this._desc.set("ZPARAMETRE", new Map());
                     this._desc.get("ZPARAMETRE").set(TOT_P, TOT_P_LABEL);
                 }
+                // pre dağıtım verisi yoksa "Dağıtım Öncesi" toplamla aynı → sadece toplam gösterilir
+                this._noPre = this._combo && !colRecs.some(r => r.ZPARAMETRE === PRE_K.p && r.ZDATA_SOURCE === PRE_K.ds && mIds.some(m => Number(r[m]) !== 0 && r[m] !== null && r[m] !== undefined));
+                if (this._combo) this._colAll.set("KOMBO", COMBOS.filter(k => !(this._noPre && NO_PRE_HIDE.has(k.id))).map(k => k.label));
                 this._buildData(Object.assign({}, p, { rows: [] }), [colRecs], attrFilters);
                 const colState = { cols: this._cols, totCols: this._totCols, vUsed: this._vUsed };
                 this._buildData(Object.assign({}, p, { cols: [] }), [rowRecs], attrFilters);
@@ -717,6 +722,7 @@
                 const ks = this._colSel.get("KOMBO");
                 COMBOS.forEach(k => {
                     if (ks && ks.ids.indexOf(k.label) < 0) return;
+                    if (this._noPre && NO_PRE_HIDE.has(k.id)) return;
                     if (r.ZPARAMETRE !== k.p || (k.ds && r.ZDATA_SOURCE !== k.ds)) return;
                     const v = base.slice();
                     v[kIdx] = k.id;
