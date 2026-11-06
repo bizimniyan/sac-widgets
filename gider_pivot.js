@@ -157,7 +157,7 @@
         return a < b ? -1 : a > b ? 1 : 0;
     };
     const BLANK = "(boş)";
-    const quoteId = (id) => id === "" ? BLANK : /[-*?;,!"]/.test(id) ? `"${id}"` : id;
+    const quoteId = (id) => id === "" ? BLANK : /[*?;,!"]/.test(id) ? `"${id}"` : id;
     const parseToken = (tok) => {
         if (/^!?"/.test(tok)) return { low: tok, high: "" };
         const m = tok.indexOf("*") < 0 ? tok.match(/^(.+?)\s*-\s*(.+)$/) : null;
@@ -175,7 +175,7 @@
             if (q) { sets[k].add(q[1]); return; }
             const s = parseToken(raw);
             if (!s.low) return;
-            if (s.high) fns[k].push(id => cmpCode(id, s.low) >= 0 && cmpCode(id, s.high) <= 0);
+            if (s.high) fns[k].push(id => id === raw || (cmpCode(id, s.low) >= 0 && cmpCode(id, s.high) <= 0));
             else if (/[*?]/.test(s.low)) {
                 const re = new RegExp("^" + s.low.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$", "i");
                 fns[k].push(id => re.test(id));

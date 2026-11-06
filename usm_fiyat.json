@@ -6,20 +6,20 @@
     "vendor": "Custom",
     "license": "",
     "id": "com.custom.usmfiyat",
-    "version": "1.6.0",
+    "version": "1.6.1",
     "icon": "",
     "webcomponents": [
         {
             "kind": "main",
             "tag": "custom-usm-fiyat",
-            "url": "https://bizimniyan.github.io/sac-widgets/usm_fiyat.js?v=160",
+            "url": "https://bizimniyan.github.io/sac-widgets/usm_fiyat.js?v=161",
             "integrity": "",
             "ignoreIntegrity": true
         },
         {
             "kind": "builder",
             "tag": "custom-usm-fiyat-builder",
-            "url": "https://bizimniyan.github.io/sac-widgets/usm_fiyat_builder.js?v=160",
+            "url": "https://bizimniyan.github.io/sac-widgets/usm_fiyat_builder.js?v=161",
             "integrity": "",
             "ignoreIntegrity": true
         }
