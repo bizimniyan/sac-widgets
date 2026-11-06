@@ -6,6 +6,7 @@
     const NO_MASTER = new Set(["Date", "Version", "ZCURRENCY"]);
     const DIM_LABEL = { Date: "Dönem", Version: "Versiyon" };
     const DESC_ONLY = new Set(["ZPARAMETRE"]);
+    const NO_DESC_COL = new Set(["ZDEVRE", "ZBOLUM"]);
     const SCRIPT_ONLY = [["Version", "setVersion"], ["ZSIRKET_KODU", "setCompanyCode"]];
     const CUR_FREE = new Set(["ZORAN", "ZMIKTAR"]);
     const SUP_PARAMS = new Set(["USM0008"]);
@@ -677,7 +678,7 @@
         }
 
         _twoCols(dim) {
-            return this._desc.has(dim) && !DESC_ONLY.has(dim);
+            return this._desc.has(dim) && !DESC_ONLY.has(dim) && !NO_DESC_COL.has(dim);
         }
 
         _valueOf(d, r) {
