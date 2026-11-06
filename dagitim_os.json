@@ -6,20 +6,20 @@
     "vendor": "Custom",
     "license": "",
     "id": "com.custom.dagitimos",
-    "version": "1.1.2",
+    "version": "1.1.3",
     "icon": "",
     "webcomponents": [
         {
             "kind": "main",
             "tag": "custom-dagitim-os",
-            "url": "https://bizimniyan.github.io/sac-widgets/dagitim_os.js?v=112",
+            "url": "https://bizimniyan.github.io/sac-widgets/dagitim_os.js?v=113",
             "integrity": "",
             "ignoreIntegrity": true
         },
         {
             "kind": "builder",
             "tag": "custom-dagitim-os-builder",
-            "url": "https://bizimniyan.github.io/sac-widgets/dagitim_os_builder.js?v=112",
+            "url": "https://bizimniyan.github.io/sac-widgets/dagitim_os_builder.js?v=113",
             "integrity": "",
             "ignoreIntegrity": true
         }
