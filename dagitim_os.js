@@ -26,6 +26,7 @@
     const NO_PRE_HIDE = new Set(["K2", "K3"]);
     const DATE_TOT_LABEL = "Dönem Toplam";
     // KOMB yer tutucu üyeleri hiç gösterilmez
+    const MC_ROW = { id: "ZMASRAF_CESIDI", base: "ZMASRAF_CESIDI", attr: "", label: "Masraf Çeşidi" };
     const HIDE_KOMB = ["ZMASRAF_YERI", "ZMASRAF_YERIALICI", "ZMASRAF_CESIDI"];
     const SEP = "\u0001";
     const BLOCK = 200;
@@ -217,6 +218,10 @@
             #xls { flex: 0 0 auto; margin: 2px 6px; padding: 1px 8px; font: 11px Arial, sans-serif; cursor: pointer; border: 1px solid #dadada; background: #fff; border-radius: 3px; color: #444; }
             #xls:hover:not(:disabled) { background: #ffe8e8; }
             #xls:disabled { color: #999; cursor: default; }
+            .dvr { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; margin: 2px 0 2px 6px; padding: 1px 8px; font: 11px Arial, sans-serif; color: #444; cursor: pointer; border: 1px solid #dadada; border-radius: 3px; background: #fff; white-space: nowrap; }
+            .dvr:hover { background: #ffe8e8; }
+            .dvr.on { border-color: #ff0000; background: #ffe8e8; }
+            .dvr input { width: 13px; height: 13px; margin: 0; accent-color: #ff0000; cursor: pointer; }
             #colSels { flex: 0 0 auto; display: flex; gap: 4px; }
             .cbtn { margin: 2px 0; padding: 1px 8px; font: 11px Arial, sans-serif; cursor: pointer; border: 1px solid #dadada; background: #fff; border-radius: 3px; color: #444; white-space: nowrap; }
             .cbtn:hover { background: #ffe8e8; }
@@ -293,7 +298,7 @@
             .pop-f .primary:hover { background: #ff3333; }
         </style>
         <div class="wrap">
-            <div class="bar"><label id="mSelWrap" hidden><select id="mSel" title="Measure"></select></label><button id="xls">Excel'e aktar</button><span id="colSels"></span><label class="bud" title="İşaretliyse sadece Date 000000, boş ve versiyonun bütçe başlangıç–bitiş dönemi"><input type="checkbox" id="bud" checked>bütçe</label><div id="status">Yükleniyor…</div></div>
+            <div class="bar"><label id="mSelWrap" hidden><select id="mSel" title="Measure"></select></label><button id="xls">Excel'e aktar</button><span id="colSels"></span><label class="dvr" id="mcWrap" title="İşaretliyse Masraf Çeşidi satırlarda gösterilir"><input type="checkbox" id="mc">Masraf çeşidi göster</label><label class="bud" title="İşaretliyse sadece Date 000000, boş ve versiyonun bütçe başlangıç–bitiş dönemi"><input type="checkbox" id="bud" checked>bütçe</label><div id="status">Yükleniyor…</div></div>
             <div id="table"></div>
             <div id="pop" class="pop" hidden>
                 <div class="pop-h"><span id="popTitle"></span><button class="x" id="popClose" title="Kapat">×</button></div>
@@ -332,6 +337,12 @@
             TUTAR_MEASURES.forEach(id => this._mSel.add(new Option(id, id)));
             this._tutar = TUTAR_MEASURES[0];
             this._mSel.addEventListener("change", () => this.setMeasureSelection(this._mSel.value));
+            this._mc = false;
+            shadowRoot.getElementById("mc").addEventListener("change", (e) => {
+                this._mc = e.target.checked;
+                shadowRoot.getElementById("mcWrap").classList.toggle("on", this._mc);
+                this._scheduleReload();
+            });
             this._budget = true;
             shadowRoot.getElementById("bud").addEventListener("change", (e) => { this._budget = e.target.checked; this._scheduleReload(); });
             this._colSelsEl = shadowRoot.getElementById("colSels");
@@ -430,7 +441,8 @@
 
         _loadParams() {
             const pid = (this.providerId || "").trim();
-            const rows = parseItems(this.rowDims);
+            const rows = parseItems(this.rowDims).filter(d => this._mc || d.id !== MC_ROW.id);
+            if (this._mc && !rows.some(d => d.id === MC_ROW.id)) rows.push(MC_ROW);
             const cols = parseItems(this.colDims).map(d => d.id === "KOMBO" ? Object.assign({}, d, { base: "ZPARAMETRE" }) : d);
             this._combo = cols.some(d => d.id === "KOMBO");
             const measures = parseItems(this.measures);
