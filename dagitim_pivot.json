@@ -6,20 +6,20 @@
     "vendor": "Custom",
     "license": "",
     "id": "com.custom.dagitimpivot",
-    "version": "1.3.0",
+    "version": "1.4.0",
     "icon": "",
     "webcomponents": [
         {
             "kind": "main",
             "tag": "custom-dagitim-pivot",
-            "url": "https://bizimniyan.github.io/sac-widgets/dagitim_pivot.js?v=130",
+            "url": "https://bizimniyan.github.io/sac-widgets/dagitim_pivot.js?v=140",
             "integrity": "",
             "ignoreIntegrity": true
         },
         {
             "kind": "builder",
             "tag": "custom-dagitim-pivot-builder",
-            "url": "https://bizimniyan.github.io/sac-widgets/dagitim_pivot_builder.js?v=130",
+            "url": "https://bizimniyan.github.io/sac-widgets/dagitim_pivot_builder.js?v=140",
             "integrity": "",
             "ignoreIntegrity": true
         }

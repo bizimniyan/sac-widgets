@@ -276,7 +276,7 @@
             .pop-f .primary:hover { background: #ff3333; }
         </style>
         <div class="wrap">
-            <div class="bar"><label id="mSelWrap" hidden><select id="mSel" title="Measure"></select></label><button id="xls">Excel'e aktar</button><span id="colSels"></span><label class="bud" title="İşaretliyse sadece Date 000000, boş ve versiyonun bütçe başlangıç–bitiş dönemi"><input type="checkbox" id="bud" checked>bütçe</label><div id="status">Yükleniyor…</div></div>
+            <div class="bar"><label id="mSelWrap" hidden><select id="mSel" title="Measure"></select></label><button id="xls">Excel'e aktar</button><span id="colSels"></span><label class="bud" title="İşaretliyse sadece Date 000000, boş ve versiyonun bütçe başlangıç–bitiş dönemi"><input type="checkbox" id="bud" checked>bütçe</label><button class="cbtn" id="yrBtn" title="Bütçe döneminin kapsadığı yıllardan seçim">Yıl: Tümü ▾</button><div id="status">Yükleniyor…</div></div>
             <div id="table"></div>
             <div id="pop" class="pop" hidden>
                 <div class="pop-h"><span id="popTitle"></span><button class="x" id="popClose" title="Kapat">×</button></div>
@@ -317,6 +317,10 @@
             this._mSel.addEventListener("change", () => this.setMeasureSelection(this._mSel.value));
             this._budget = true;
             shadowRoot.getElementById("bud").addEventListener("change", (e) => { this._budget = e.target.checked; this._scheduleReload(); });
+            this._yearText = "";
+            this._yrBtn = shadowRoot.getElementById("yrBtn");
+            this._yrBtn.addEventListener("click", () => this._openYearPopup(this._yrBtn));
+            shadowRoot.getElementById("bud").addEventListener("change", (e) => { this._yrBtn.hidden = !e.target.checked; });
             this._colSelsEl = shadowRoot.getElementById("colSels");
             this._colSel = new Map();
             this._colIds = new Map();
@@ -421,7 +425,7 @@
             SCRIPT_ONLY.forEach(([d]) => filters.delete(d));
             this._override.forEach((vals, dim) => { if (vals.length) filters.set(dim, vals); else filters.delete(dim); });
             const fl = Array.from(filters.entries()).sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
-            const sig = JSON.stringify([pid, rows, cols, measures, fl, this._budget, Array.from(this._colSel.entries()).map(([k, c]) => [k, c.clause]).sort()]);
+            const sig = JSON.stringify([pid, rows, cols, measures, fl, this._budget, this._yearText, Array.from(this._colSel.entries()).map(([k, c]) => [k, c.clause]).sort()]);
             return { pid, rows, cols, measures, filters, sig };
         }
 
@@ -1166,6 +1170,46 @@
             this._scheduleReload();
         }
 
+        _yearsOf(b) {
+            const out = [];
+            if (b && b.s && b.e) for (let y = +b.s.slice(0, 4); y <= +b.e.slice(0, 4); y++) out.push(String(y));
+            return out;
+        }
+
+        _yearRange(b) {
+            const all = `(Date ge '${q(b.s)}' and Date le '${q(b.e)}')`;
+            const m = matcher(this._yearText);
+            if (!m) return all;
+            const parts = this._yearsOf(b).filter(m).map(y => {
+                const lo = y + "01" > b.s ? y + "01" : b.s;
+                const hi = y + "12" < b.e ? y + "12" : b.e;
+                return `(Date ge '${q(lo)}' and Date le '${q(hi)}')`;
+            });
+            if (!parts.length) return all;
+            return parts.length === 1 ? parts[0] : "(" + parts.join(" or ") + ")";
+        }
+
+        async _openYearPopup(btn) {
+            const p = this._loadParams();
+            const vers = p.filters.get("Version") || [];
+            if (!this._versions.has(p.pid)) await this._budgetClause(p).catch(() => "");
+            const vm = this._versions.has(p.pid) ? await this._versions.get(p.pid).catch(() => new Map()) : new Map();
+            const ids = Array.from(new Set(vers.flatMap(v => this._yearsOf(vm.get(v))))).sort();
+            if (!ids.length) { this._setStatus("Versiyonun bütçe dönemi bulunamadı (BUD_START/BUD_END)."); return; }
+            this._showPopup({ label: "Yıl", ids, text: this._yearText, desc: null, apply: (text) => this._setYears(ids, text) }, btn);
+        }
+
+        _setYears(ids, text) {
+            const v = splitList(text).join("; ");
+            const m = matcher(v);
+            const on = m ? ids.filter(m) : ids;
+            this._yearText = !m || !on.length || on.length === ids.length ? "" : v;
+            this._yrBtn.textContent = `Yıl: ${!this._yearText ? "Tümü" : on.length === 1 ? on[0] : `${on.length} / ${ids.length} seçili`} ▾`;
+            this._yrBtn.title = this._yearText || "Bütçe döneminin kapsadığı yıllardan seçim";
+            this._yrBtn.classList.toggle("on", !!this._yearText);
+            this._scheduleReload();
+        }
+
         async _budgetClause(p) {
             const vers = (this._budget && p.filters.get("Version")) || [];
             if (!vers.length) return "";
@@ -1177,7 +1221,7 @@
             const vm = await this._versions.get(p.pid);
             const parts = vers.map(v => {
                 const b = vm.get(v);
-                return b && b.s && b.e ? `(Version eq '${q(v)}' and (Date eq '000000' or Date eq '#' or (Date ge '${q(b.s)}' and Date le '${q(b.e)}')))` : `Version eq '${q(v)}'`;
+                return b && b.s && b.e ? `(Version eq '${q(v)}' and (Date eq '000000' or Date eq '#' or ${this._yearRange(b)}))` : `Version eq '${q(v)}'`;
             });
             return parts.length === 1 ? parts[0] : "(" + parts.join(" or ") + ")";
         }
