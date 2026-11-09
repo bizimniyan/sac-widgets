@@ -671,8 +671,9 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
             this._baseFilter = filter;
             this._mIds = mIds;
             const colDims = p.cols.filter(d => d.id !== "Date" && !d.attr && qDims.indexOf(d.base) < 0);
-            Array.from(this._colSel.keys()).forEach(k => { if (!colDims.some(d => d.id === k)) this._colSel.delete(k); });
-            this._renderColBtns(colDims);
+            const btnDims = (p.rows.some(d => d.base === "Date") ? [] : [{ id: "Date", base: "Date", attr: "", label: DIM_LABEL.Date }]).concat(colDims);
+            Array.from(this._colSel.keys()).forEach(k => { if (!btnDims.some(d => d.id === k)) this._colSel.delete(k); });
+            this._renderColBtns(btnDims);
             filter = and(filter, Array.from(this._colSel.values()).map(c => c.clause).join(" and "));
             const afBases = attrFilters.map(d => d.base);
             const rowSel = Array.from(new Set(p.rows.map(d => d.base).concat(afBases, qDims, p.rows.some(d => d.id === "ZTEDARIKCI") ? ["ZPARAMETRE"] : []))).concat(mIds).join(",");

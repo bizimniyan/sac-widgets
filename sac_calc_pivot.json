@@ -6,20 +6,20 @@
     "vendor": "Custom",
     "license": "",
     "id": "com.custom.saccalcpivot",
-    "version": "1.5.0",
+    "version": "1.6.0",
     "icon": "",
     "webcomponents": [
         {
             "kind": "main",
             "tag": "custom-sac-calc-pivot",
-            "url": "https://bizimniyan.github.io/sac-widgets/sac_calc_pivot.js?v=150",
+            "url": "https://bizimniyan.github.io/sac-widgets/sac_calc_pivot.js?v=160",
             "integrity": "",
             "ignoreIntegrity": true
         },
         {
             "kind": "builder",
             "tag": "custom-sac-calc-pivot-builder",
-            "url": "https://bizimniyan.github.io/sac-widgets/sac_calc_pivot_builder.js?v=150",
+            "url": "https://bizimniyan.github.io/sac-widgets/sac_calc_pivot_builder.js?v=160",
             "integrity": "",
             "ignoreIntegrity": true
         }
@@ -28,10 +28,10 @@
         "width": { "type": "integer", "default": 1000 },
         "height": { "type": "integer", "default": 500 },
         "providerId": { "type": "string", "default": "Cdjpd2dklat44118tp1e6sekg54" },
-        "rowDims": { "type": "string", "default": "ZMUSTERI:Müşteri" },
-        "colDims": { "type": "string", "default": "Date" },
+        "rowDims": { "type": "string", "default": "ZMALZEME:Malzeme, ZMALZEME.MALZ_GRUP1:Grup 1, ZMALZEME.MALZ_GRUP2:Grup 2, ZMALZEME.MRP_CONTR:MRP Kontrolörü, ZMUSTERI:Müşteri, ZKEY2:Key2" },
+        "colDims": { "type": "string", "default": "" },
         "filters": { "type": "string", "default": "" },
-        "measures": { "type": "string", "default": "R_CIRO, C_SMM, C_BRUT_KAR, C_BRUT_KAR_CIRO_PCT, C_NET_KAR" },
+        "measures": { "type": "string", "default": "R_CIRO, R_ADET, R_DIR_ISCILIK, R_ENDIR_ISCILIK, R_MALZ_MALIYET, R_TOPLAM_SURE, R_AMORTISMAN_730, R_ENERJI, R_GUG, R_DIGER_GIDER, R_740, R_750, R_760, R_770, R_TOP_AMORTISMAN, R_FINANSMAN_GID, C_BIRIM_ISCILIK, C_730, C_TOPLAM_ISCILIK, C_SMM, C_BRUT_KAR, C_FAALIYET_GID, C_FAALIYET_KARI, C_EBITDA, C_NET_KAR, C_MALZ_CIRO_PCT, C_DIR_ISC_CIRO_PCT, C_ENDIR_ISC_CIRO_PCT, C_AMORT_CIRO_PCT, C_ENERJI_CIRO_PCT, C_GUG_CIRO_PCT, C_DIGER_CIRO_PCT, C_TOP_ISC_CIRO_PCT, C_SMM_CIRO_PCT, C_BRUT_KAR_CIRO_PCT, C_740_CIRO_PCT, C_740_SMM_PCT, C_750_CIRO_PCT, C_750_SMM_PCT, C_760_CIRO_PCT, C_760_SMM_PCT, C_770_CIRO_PCT, C_770_SMM_PCT, C_FAAL_GID_CIRO_PCT, C_FAAL_GID_SMM_PCT, C_FAAL_KAR_CIRO_PCT, C_TOP_AMORT_CIRO_PCT, C_EBITDA_CIRO_PCT, C_FIN_GID_CIRO_PCT, C_NET_KAR_CIRO_PCT, R_USM_SMM" },
         "measureSelect": { "type": "string", "default": "x" },
         "freezeCols": { "type": "string", "default": "2" }
     },
