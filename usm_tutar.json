@@ -6,20 +6,20 @@
     "vendor": "Custom",
     "license": "",
     "id": "com.custom.usmtutar",
-    "version": "1.3.2",
+    "version": "1.4.0",
     "icon": "",
     "webcomponents": [
         {
             "kind": "main",
             "tag": "custom-usm-tutar",
-            "url": "https://bizimniyan.github.io/sac-widgets/usm_tutar.js?v=132",
+            "url": "https://bizimniyan.github.io/sac-widgets/usm_tutar.js?v=140",
             "integrity": "",
             "ignoreIntegrity": true
         },
         {
             "kind": "builder",
             "tag": "custom-usm-tutar-builder",
-            "url": "https://bizimniyan.github.io/sac-widgets/usm_tutar_builder.js?v=132",
+            "url": "https://bizimniyan.github.io/sac-widgets/usm_tutar_builder.js?v=140",
             "integrity": "",
             "ignoreIntegrity": true
         }
@@ -199,6 +199,16 @@
                     "name": "values",
                     "type": "string",
                     "description": "orn. 001;002"
+                }
+            ]
+        },
+        "setGroup4Filter": {
+            "description": "Malzeme turu (MAT_TYPE) filtresi: degerler ; ile, (boş) bos deger, bos metin = tumu",
+            "parameters": [
+                {
+                    "name": "values",
+                    "type": "string",
+                    "description": "orn. Z031;Z021"
                 }
             ]
         },

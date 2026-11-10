@@ -15,7 +15,7 @@
     const EXPORT_ROWS = 200000;
     const XLSX_MAX_ROWS = 1048575;
     const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-    const XLSX_HEAD = ["Seviye", "Ana Malzeme", "Üst Kod", "Masraf Öğesi", "Kod", "Açıklama", "Grup 1", "Grup 2", "Gruplama", "Tür"];
+    const XLSX_HEAD = ["Seviye", "Ana Malzeme", "Üst Kod", "Masraf Öğesi", "Kod", "Açıklama", "Grup 1", "Grup 2", "Gruplama", "Malzeme Türü", "Tür"];
 
     const loadScript = (src) => new Promise((resolve, reject) => {
         if (window.Tabulator) return resolve();
@@ -415,12 +415,13 @@
             this._moIds = [];
             this._desc = { ZMALZEME: new Map(), ZBILESEN: new Map(), ZMASRAF_OGESI: new Map() };
             this._attr = { ZMALZEME: new Map(), ZBILESEN: new Map() };
-            this._grp = { 1: null, 2: null, 3: null, O: null };
+            this._grp = { 1: null, 2: null, 3: null, 4: null, O: null };
             this._gHeader = {};
             this._buildKodHeader();
             this._buildGroupHeader(1, "Grup 1");
             this._buildGroupHeader(2, "Grup 2");
             this._buildGroupHeader(3, "Gruplama");
+            this._buildGroupHeader(4, "Malzeme Türü");
             this._buildDescHeader();
             this._initPopup();
             this._initGroupPopup();
@@ -429,6 +430,7 @@
         setGroup1Filter(values) { this._setGroup(1, values); }
         setGroup2Filter(values) { this._setGroup(2, values); }
         setGroup3Filter(values) { this._setGroup(3, values); }
+        setGroup4Filter(values) { this._setGroup(4, values); }
         setCostElementFilter(values) { this._setGroup("O", values); }
         getCostElementFilter() { return this._groupText("O"); }
 
@@ -758,15 +760,17 @@
             const g1 = this._attrsReady ? this._grp[1] : null;
             const g2 = this._attrsReady ? this._grp[2] : null;
             const g3 = this._attrsReady ? this._grp[3] : null;
+            const g4 = this._attrsReady ? this._grp[4] : null;
             const attr = this._attr.ZMALZEME;
             const u = this._compMatch ? (this._used ? this._used.any : EMPTY_SET) : null;
             const live = this._liveIds();
-            if (!m && !t && !g1 && !g2 && !g3 && !u) return live.slice();
+            if (!m && !t && !g1 && !g2 && !g3 && !g4 && !u) return live.slice();
             return live.filter(id => (!m || m(id)) && (!u || u.has(id)) &&
                 (!t || ty.has(this._typeOf(id))) &&
                 (!g1 || g1.has((attr.get(id) || {}).g1 || "")) &&
                 (!g2 || g2.has((attr.get(id) || {}).g2 || "")) &&
-                (!g3 || g3.has((attr.get(id) || {}).g3 || "")));
+                (!g3 || g3.has((attr.get(id) || {}).g3 || "")) &&
+                (!g4 || g4.has((attr.get(id) || {}).g4 || "")));
         }
         async _loadMasterRanges(dim, ids, token) {
             const want = new Set(ids);
@@ -775,7 +779,7 @@
             const cuts = ids.slice(1).map((id, i) => [gap(ids[i], id), i + 1]).sort((a, b) => b[0] - a[0]).slice(0, 5).map(c => c[1]).sort((a, b) => a - b);
             const segs = [];
             [0].concat(cuts).forEach((s, i, arr) => { const e = i + 1 < arr.length ? arr[i + 1] : ids.length; if (e > s) segs.push(ids.slice(s, e)); });
-            const select = this._attr[dim] ? "ID,Description,MALZ_GRUP1,MALZ_GRUP2,MRP_CONTR" : "ID,Description";
+            const select = this._attr[dim] ? "ID,Description,MALZ_GRUP1,MALZ_GRUP2,MRP_CONTR,MAT_TYPE" : "ID,Description";
             try {
                 await runPool(segs.map(seg => async () => {
                     if (token !== this._token) return;
@@ -792,12 +796,12 @@
 
         _storeMaster(dim, r) {
             this._desc[dim].set(r.ID, r.Description || "");
-            if (this._attr[dim]) this._attr[dim].set(r.ID, { g1: r.MALZ_GRUP1 || "", g2: r.MALZ_GRUP2 || "", g3: r.MRP_CONTR || "" });
+            if (this._attr[dim]) this._attr[dim].set(r.ID, { g1: r.MALZ_GRUP1 || "", g2: r.MALZ_GRUP2 || "", g3: r.MRP_CONTR || "", g4: r.MAT_TYPE || "" });
         }
 
         _attrOf(dim, id) {
             const a = this._attr[dim] && this._attr[dim].get(id);
-            return a ? { g1: a.g1, g2: a.g2, g3: a.g3 } : { g1: null, g2: null, g3: null };
+            return a ? { g1: a.g1, g2: a.g2, g3: a.g3, g4: a.g4 } : { g1: null, g2: null, g3: null, g4: null };
         }
 
         async _loadMoDescriptions() {
@@ -812,7 +816,7 @@
 
         _refreshDescs() {
             if (!this._table) return;
-            if (this._grp[1] || this._grp[2] || this._grp[3]) {
+            if (this._grp[1] || this._grp[2] || this._grp[3] || this._grp[4]) {
                 this._applyFilter();
                 return;
             }
@@ -822,7 +826,7 @@
                 const dim = DIM[d._kind];
                 const a = this._attrOf(dim, d._id);
                 const desc = this._desc[dim].get(d._id) || "";
-                if (desc !== d.desc || a.g1 !== d.g1 || a.g2 !== d.g2 || a.g3 !== d.g3) r.update({ desc, g1: a.g1, g2: a.g2, g3: a.g3 });
+                if (desc !== d.desc || a.g1 !== d.g1 || a.g2 !== d.g2 || a.g3 !== d.g3 || a.g4 !== d.g4) r.update({ desc, g1: a.g1, g2: a.g2, g3: a.g3, g4: a.g4 });
             };
             const walk = (rows) => rows.forEach(r => {
                 upd(r);
@@ -891,7 +895,7 @@
 
         _totalRow() {
             const wait = !this._matVals;
-            const row = { key: "TOTAL", name: "Toplam", type: "", g1: "", g2: "", g3: "", desc: wait ? null : `${nf.format(this._ids.length)} malzeme`, _kind: "T", _wait: wait };
+            const row = { key: "TOTAL", name: "Toplam", type: "", g1: "", g2: "", g3: "", g4: "", desc: wait ? null : `${nf.format(this._ids.length)} malzeme`, _kind: "T", _wait: wait };
             this._valueFields.forEach(f => { row[f] = null; });
             if (wait) return row;
             const vals = this._matVals[this._mi()];
@@ -1108,7 +1112,7 @@
             const line = (lvl, top, parent, r) => {
                 const dim = DIM[r._kind];
                 const a = this._attrOf(dim, r._id);
-                const cells = [lvl, top, parent, r._kind === "M" ? "" : r._mo, r._id, this._desc[dim].get(r._id) || "", a.g1, a.g2, a.g3, TYPE_LABEL[r._kind]];
+                const cells = [lvl, top, parent, r._kind === "M" ? "" : r._mo, r._id, this._desc[dim].get(r._id) || "", a.g1, a.g2, a.g3, a.g4, TYPE_LABEL[r._kind]];
                 for (let i = 0; i < fields.length; i++) {
                     const v = r[fields[i]];
                     cells.push(v !== undefined && v !== null ? Math.round(v * 1e6) / 1e6 : null);
@@ -1171,7 +1175,7 @@
         async _loadDescriptions(dim, ids) {
             const cache = this._desc[dim];
             const missing = ids.filter(id => !cache.has(id));
-            const select = this._attr[dim] ? "ID,Description,MALZ_GRUP1,MALZ_GRUP2,MRP_CONTR" : "ID,Description";
+            const select = this._attr[dim] ? "ID,Description,MALZ_GRUP1,MALZ_GRUP2,MRP_CONTR,MAT_TYPE" : "ID,Description";
             await Promise.all(chunks(missing, CHUNK).map(async (part) => {
                 const rows = await this._get(`${dim}Master`, { $select: select, $filter: orEq("ID", part) });
                 part.forEach(id => this._storeMaster(dim, { ID: id }));
@@ -1526,6 +1530,7 @@
                 { title: "Grup 1", field: "g1", width: 120, cssClass: "soft", titleFormatter: () => this._gHeader[1].el },
                 { title: "Grup 2", field: "g2", width: 170, cssClass: "soft", titleFormatter: () => this._gHeader[2].el },
                 { title: "Gruplama", field: "g3", width: 130, cssClass: "soft", titleFormatter: () => this._gHeader[3].el },
+                { title: "Malzeme Türü", field: "g4", width: 120, cssClass: "soft", titleFormatter: () => this._gHeader[4].el },
                 { title: "Tür", field: "type", width: 95, cssClass: "soft" }
             ];
             this._valueFields = [];
