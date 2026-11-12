@@ -6,20 +6,20 @@
     "vendor": "Custom",
     "license": "",
     "id": "com.custom.saccalcpivot",
-    "version": "1.6.1",
+    "version": "1.6.2",
     "icon": "",
     "webcomponents": [
         {
             "kind": "main",
             "tag": "custom-sac-calc-pivot",
-            "url": "https://bizimniyan.github.io/sac-widgets/sac_calc_pivot.js?v=161",
+            "url": "https://bizimniyan.github.io/sac-widgets/sac_calc_pivot.js?v=162",
             "integrity": "",
             "ignoreIntegrity": true
         },
         {
             "kind": "builder",
             "tag": "custom-sac-calc-pivot-builder",
-            "url": "https://bizimniyan.github.io/sac-widgets/sac_calc_pivot_builder.js?v=161",
+            "url": "https://bizimniyan.github.io/sac-widgets/sac_calc_pivot_builder.js?v=162",
             "integrity": "",
             "ignoreIntegrity": true
         }
@@ -31,7 +31,7 @@
         "rowDims": { "type": "string", "default": "ZMALZEME:Malzeme, ZMALZEME.MALZ_GRUP1:Grup 1, ZMALZEME.MALZ_GRUP2:Grup 2, ZMALZEME.MRP_CONTR:MRP Kontrolörü, ZMUSTERI:Müşteri, ZKEY2:Key2" },
         "colDims": { "type": "string", "default": "" },
         "filters": { "type": "string", "default": "" },
-        "measures": { "type": "string", "default": "R_CIRO, R_ADET, R_MALZ_MALIYET, C_MALZ_CIRO_PCT, R_TOPLAM_SURE, C_BIRIM_ISCILIK, R_DIR_ISCILIK, C_DIR_ISC_CIRO_PCT, C_730, R_ENDIR_ISCILIK, C_ENDIR_ISC_CIRO_PCT, R_AMORTISMAN_730, C_AMORT_CIRO_PCT, R_ENERJI, C_ENERJI_CIRO_PCT, R_GUG, C_GUG_CIRO_PCT, R_DIGER_GIDER, C_DIGER_CIRO_PCT, C_TOPLAM_ISCILIK, C_TOP_ISC_CIRO_PCT, C_SMM, C_SMM_CIRO_PCT, C_BRUT_KAR, C_BRUT_KAR_CIRO_PCT, R_740, C_740_CIRO_PCT, C_740_SMM_PCT, R_750, C_750_CIRO_PCT, C_750_SMM_PCT, R_760, C_760_CIRO_PCT, C_760_SMM_PCT, R_770, C_770_CIRO_PCT, C_770_SMM_PCT, C_FAALIYET_GID, C_FAAL_GID_CIRO_PCT, C_FAAL_GID_SMM_PCT, C_FAALIYET_KARI, C_FAAL_KAR_CIRO_PCT, R_TOP_AMORTISMAN, C_TOP_AMORT_CIRO_PCT, C_EBITDA, C_EBITDA_CIRO_PCT, R_FINANSMAN_GID, C_FIN_GID_CIRO_PCT, C_NET_KAR, C_NET_KAR_CIRO_PCT, R_USM_SMM" },
+        "measures": { "type": "string", "default": "R_USM_SMM, R_CIRO, R_ADET, R_MALZ_MALIYET, C_MALZ_CIRO_PCT, R_TOPLAM_SURE, C_BIRIM_ISCILIK, R_DIR_ISCILIK, C_DIR_ISC_CIRO_PCT, C_730, R_ENDIR_ISCILIK, C_ENDIR_ISC_CIRO_PCT, R_AMORTISMAN_730, C_AMORT_CIRO_PCT, R_ENERJI, C_ENERJI_CIRO_PCT, R_GUG, C_GUG_CIRO_PCT, R_DIGER_GIDER, C_DIGER_CIRO_PCT, C_TOPLAM_ISCILIK, C_TOP_ISC_CIRO_PCT, C_SMM, C_SMM_CIRO_PCT, C_BRUT_KAR, C_BRUT_KAR_CIRO_PCT, R_740, C_740_CIRO_PCT, C_740_SMM_PCT, R_750, C_750_CIRO_PCT, C_750_SMM_PCT, R_760, C_760_CIRO_PCT, C_760_SMM_PCT, R_770, C_770_CIRO_PCT, C_770_SMM_PCT, C_FAALIYET_GID, C_FAAL_GID_CIRO_PCT, C_FAAL_GID_SMM_PCT, C_FAALIYET_KARI, C_FAAL_KAR_CIRO_PCT, R_TOP_AMORTISMAN, C_TOP_AMORT_CIRO_PCT, C_EBITDA, C_EBITDA_CIRO_PCT, R_FINANSMAN_GID, C_FIN_GID_CIRO_PCT, C_NET_KAR, C_NET_KAR_CIRO_PCT" },
         "measureSelect": { "type": "string", "default": "x" },
         "freezeCols": { "type": "string", "default": "2" }
     },
