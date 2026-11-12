@@ -418,7 +418,6 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
             .kod-f input:focus, .pop input[type=text]:focus { outline: 1px solid #ff0000; outline-offset: 0; border-color: #ff0000; }
             .tabulator-row .tabulator-cell.tabulator-range-selected:not(.tabulator-range-only-cell-selected) { background-color: #ffd9d9 !important; }
             .tabulator .tabulator-header .tabulator-col.tabulator-range-highlight, .tabulator .tabulator-header .tabulator-col.tabulator-range-selected { background: #ffecec !important; color: inherit !important; }
-            .tabulator .tabulator-row.row-total .tabulator-cell.tsel { background-color: #ffd9d9 !important; }
             .tabulator-row .tabulator-cell.dash { color: #cfcfcf; font-weight: 400; }
             .tabulator-row .tabulator-cell.tot { font-weight: 600; }
             .kod-f { display: flex; gap: 3px; margin-top: 6px; }
@@ -490,17 +489,7 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
             this._statusEl = shadowRoot.getElementById("status");
             this._tableEl = shadowRoot.getElementById("table");
             // Tabulator 6.3.1: Enter editörsüz hücrede düzenleme açmaya çalışıp çöküyor
-            this._tableEl.addEventListener("keydown", (e) => {
-                if (e.target.closest("input,textarea,select")) return;
-                if (e.key === "Enter") e.stopPropagation();
-                if (!this._tSel) return;
-                if ((e.ctrlKey || e.metaKey) && (e.key === "c" || e.key === "C")) { e.stopPropagation(); e.preventDefault(); this._copyTotals(); }
-                else if (e.key === "Escape") this._setTotSel(null);
-            }, true);
-            // Donuk toplam satırı Tabulator aralık seçimine girmiyor: kendi seçimi + Ctrl+C
-            this._tableEl.addEventListener("mousedown", (e) => this._totMouse(e, false), true);
-            this._tableEl.addEventListener("mouseover", (e) => { if (this._tDrag && (e.buttons & 1)) this._totMouse(e, true); }, true);
-            window.addEventListener("mouseup", () => { this._tDrag = false; });
+            this._tableEl.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.target.closest("input,textarea,select")) e.stopPropagation(); }, true);
             this._xlsBtn = shadowRoot.getElementById("xls");
             this._xlsBtn.addEventListener("click", () => this.exportExcel());
             this._mSelWrap = shadowRoot.getElementById("mSelWrap");
@@ -1130,7 +1119,6 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
             this._inputs.forEach((input, dim) => input.classList.toggle("on", this._sel.has(dim)));
             if (!this._table) return;
             this._shown = this._filtered();
-            this._tSel = null;
             this._table.replaceData([this._totalRow()].concat(this._shown)).then(() => this._loadVisible());
             this._updateStatus();
         }
@@ -1262,55 +1250,7 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
             this._setStatus(`${n === all ? nf.format(all) : `${nf.format(n)} / ${nf.format(all)}`} satır${this._full ? secs : " · değerler yükleniyor…"}`);
         }
 
-        _totCells() {
-            const row = this._tableEl.querySelector(".tabulator-row.row-total");
-            return row ? Array.from(row.querySelectorAll(".tabulator-cell")) : [];
-        }
-
-        _setTotSel(s) {
-            this._tSel = s;
-            const lo = s ? Math.min(s.a, s.b) : 0, hi = s ? Math.max(s.a, s.b) : -1;
-            this._totCells().forEach((c, k) => c.classList.toggle("tsel", k >= lo && k <= hi));
-        }
-
-        _totMouse(e, over) {
-            const cell = e.target.closest && e.target.closest(".tabulator-row.row-total .tabulator-cell");
-            if (!cell) {
-                if (!over && this._tSel) this._setTotSel(null);
-                return;
-            }
-            const i = this._totCells().indexOf(cell);
-            if (over) {
-                if (this._tSel) this._setTotSel({ a: this._tSel.a, b: i });
-                return;
-            }
-            if (e.button !== 0) return;
-            e.stopPropagation();
-            e.preventDefault();
-            this._tDrag = true;
-            this._setTotSel(e.shiftKey && this._tSel ? { a: this._tSel.a, b: i } : { a: i, b: i });
-            const holder = this._tableEl.querySelector(".tabulator-tableholder");
-            if (holder) holder.focus({ preventScroll: true });
-        }
-
-        _copyTotals() {
-            const s = this._tSel;
-            const row = this._table && this._table.getRow("TOTAL");
-            if (!s || !row) return;
-            const d = row.getData();
-            const text = this._totCells().slice(Math.min(s.a, s.b), Math.max(s.a, s.b) + 1).map(c => {
-                const v = d[c.getAttribute("tabulator-field")];
-                return typeof v === "number" ? numCopy(v) : textCopy(v);
-            }).join("\t");
-            const h = (ev) => { ev.clipboardData.setData("text/plain", text); ev.preventDefault(); ev.stopImmediatePropagation(); };
-            document.addEventListener("copy", h, true);
-            let ok = false;
-            try { ok = document.execCommand("copy"); } finally { document.removeEventListener("copy", h, true); }
-            if (!ok && navigator.clipboard) navigator.clipboard.writeText(text).catch(() => {});
-        }
-
         _destroyTable() {
-            this._tSel = null;
             if (this._table) {
                 this._table.destroy();
                 this._table = null;
