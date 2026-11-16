@@ -11,6 +11,8 @@
     const USE_PARAM = "USM0013";
     const PROD_PARAM = "USM0015";
     const CONS_PARAM = "USM0004";
+    const ACT_PARAM = "USM0014";
+    const ACT_COUNT = 6;
     const ALT = "ALT";
     const ALT_TITLE = "Alt Seviye Bileşenleri";
     const TOT = "TOT";
@@ -912,6 +914,8 @@
                 const v = Object.assign({}, this._matVals.get(id), this._altFor("M", id));
                 for (const f in v) sums[f] = (sums[f] || 0) + v[f];
             });
+            // 6 aktivite türü aynı süreyi taşır; üst toplamda tek süre görünsün
+            this._dates.forEach(d => { const f = fieldOf(d, ACT_PARAM); if (sums[f]) sums[f] /= ACT_COUNT; });
             return this._addTotals(sums);
         }
 
