@@ -1,0 +1,100 @@
+{
+    "name": "SacCalcPivot2Widget",
+    "description": "SacCalcPivot kopyasi - SacPivot + SAC calculated measure formulleri (Karlilik Modeli R_/C_ measure'lari)",
+    "newInstancePrefix": "SacCalcPivot2",
+    "eula": "",
+    "vendor": "Custom",
+    "license": "",
+    "id": "com.custom.saccalcpivot2",
+    "version": "1.0.0",
+    "icon": "",
+    "webcomponents": [
+        {
+            "kind": "main",
+            "tag": "custom-sac-calc-pivot2",
+            "url": "https://bizimniyan.github.io/sac-widgets/sac_calc_pivot2.js?v=100",
+            "integrity": "",
+            "ignoreIntegrity": true
+        },
+        {
+            "kind": "builder",
+            "tag": "custom-sac-calc-pivot2-builder",
+            "url": "https://bizimniyan.github.io/sac-widgets/sac_calc_pivot2_builder.js?v=100",
+            "integrity": "",
+            "ignoreIntegrity": true
+        }
+    ],
+    "properties": {
+        "width": { "type": "integer", "default": 1000 },
+        "height": { "type": "integer", "default": 500 },
+        "providerId": { "type": "string", "default": "Cdjpd2dklat44118tp1e6sekg54" },
+        "rowDims": { "type": "string", "default": "ZMALZEME:Malzeme, ZMALZEME.MALZ_GRUP1:Grup 1, ZMALZEME.MALZ_GRUP2:Grup 2, ZMALZEME.MRP_CONTR:MRP Kontrolörü, ZMUSTERI:Müşteri, ZKEY2:Key2" },
+        "colDims": { "type": "string", "default": "" },
+        "filters": { "type": "string", "default": "" },
+        "measures": { "type": "string", "default": "R_USM_SMM, R_CIRO, R_ADET, R_MALZ_MALIYET, C_MALZ_CIRO_PCT, R_TOPLAM_SURE, C_BIRIM_ISCILIK, R_DIR_ISCILIK, C_DIR_ISC_CIRO_PCT, C_730, R_ENDIR_ISCILIK, C_ENDIR_ISC_CIRO_PCT, R_AMORTISMAN_730, C_AMORT_CIRO_PCT, R_ENERJI, C_ENERJI_CIRO_PCT, R_GUG, C_GUG_CIRO_PCT, R_DIGER_GIDER, C_DIGER_CIRO_PCT, C_TOPLAM_ISCILIK, C_TOP_ISC_CIRO_PCT, C_SMM, C_SMM_CIRO_PCT, C_BRUT_KAR, C_BRUT_KAR_CIRO_PCT, R_740, C_740_CIRO_PCT, C_740_SMM_PCT, R_750, C_750_CIRO_PCT, C_750_SMM_PCT, R_760, C_760_CIRO_PCT, C_760_SMM_PCT, R_770, C_770_CIRO_PCT, C_770_SMM_PCT, C_FAALIYET_GID, C_FAAL_GID_CIRO_PCT, C_FAAL_GID_SMM_PCT, C_FAALIYET_KARI, C_FAAL_KAR_CIRO_PCT, R_TOP_AMORTISMAN, C_TOP_AMORT_CIRO_PCT, C_EBITDA, C_EBITDA_CIRO_PCT, R_FINANSMAN_GID, C_FIN_GID_CIRO_PCT, C_NET_KAR, C_NET_KAR_CIRO_PCT" },
+        "measureSelect": { "type": "string", "default": "x" },
+        "freezeCols": { "type": "string", "default": "2" }
+    },
+    "methods": {
+        "setVersion": {
+            "description": "Versiyonu verir ve veriyi yukler (zorunlu; verilmeden veri cekilmez)",
+            "parameters": [
+                { "name": "version", "type": "string", "description": "Versiyon ID, orn. public.2027BUD_01" }
+            ]
+        },
+        "setCompanyCode": {
+            "description": "Sirket kodunu verir ve veriyi yukler (zorunlu; bos = hepsi, virgulle coklu)",
+            "parameters": [
+                { "name": "companyCode", "type": "string", "description": "Sirket kodu, orn. 1100" }
+            ]
+        },
+        "setFilter": {
+            "description": "Sabit filtreyi degistirir ve veriyi yeniden yukler; bos deger = filtreyi kaldir",
+            "parameters": [
+                { "name": "dimension", "type": "string", "description": "Boyut ID, orn. Version, ZSIRKET_KODU" },
+                { "name": "values", "type": "string", "description": "Degerler virgulle, orn. 1100,1200" }
+            ]
+        },
+        "setMeasureSelection": {
+            "description": "Measure secimli acikken formullerde kullanilacak tutar: ZTUTAR_EUR, ZTUTAR_TRY, ZTUTAR_USD",
+            "parameters": [
+                { "name": "measure", "type": "string", "description": "orn. ZTUTAR_EUR" }
+            ]
+        },
+        "getMeasureSelection": {
+            "description": "Secili tutar measure'i",
+            "parameters": [],
+            "returnType": "string"
+        },
+        "getFilter": {
+            "description": "Boyutun gecerli sabit filtre degerleri (virgulle)",
+            "parameters": [
+                { "name": "dimension", "type": "string", "description": "Boyut ID" }
+            ],
+            "returnType": "string"
+        },
+        "setSelection": {
+            "description": "Satir boyutu secim kutusu: 11*, 11000001, 11000000-11009999, (boş), !kod = haric; birden fazlasi ; ile, bos = tumu",
+            "parameters": [
+                { "name": "dimension", "type": "string", "description": "Satir boyutu ID" },
+                { "name": "values", "type": "string", "description": "Secim metni" }
+            ]
+        },
+        "getSelection": {
+            "description": "Satir boyutunun gecerli secimi",
+            "parameters": [
+                { "name": "dimension", "type": "string", "description": "Satir boyutu ID" }
+            ],
+            "returnType": "string"
+        },
+        "exportExcel": {
+            "description": "Secime uyan satirlari Excel'e aktarir",
+            "parameters": []
+        },
+        "refresh": {
+            "description": "Veriyi yeniden yukler",
+            "parameters": []
+        }
+    },
+    "events": {}
+}
