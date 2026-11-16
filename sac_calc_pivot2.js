@@ -684,6 +684,7 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
             filter = and(filter, budget);
             // müşterisi # olan TRNSFR girdi satırları dağıtılmış PREDGTM ile çift sayılıyor
             filter = and(filter, "ZMUSTERI ne '#'");
+            filter = and(filter, "ZMALZEME ne 'KOMB' and ZMALZEME ne 'KOMBYENI'");
             this._baseFilter = filter;
             this._mIds = mIds;
             const colDims = p.cols.filter(d => d.id !== "Date" && !d.attr && qDims.indexOf(d.base) < 0);
