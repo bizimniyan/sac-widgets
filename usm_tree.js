@@ -11,6 +11,8 @@
     const USE_PARAM = "USM0013";
     const PROD_PARAM = "USM0015";
     const CONS_PARAM = "USM0004";
+    const ACT_PARAM = "USM0014";
+    const TOTAL_ACT = "GUG";
     const ALT = "ALT";
     const ALT_TITLE = "Alt Seviye Bileşenleri";
     const TOT = "TOT";
@@ -763,6 +765,7 @@
             this._attrsReady = false;
             this._attrPromise = null;
             this._matVals = null;
+            this._gugVals = null;
             this._matValsError = null;
             this._live = null;
             this._liveIds = null;
@@ -912,6 +915,14 @@
                 const v = Object.assign({}, this._matVals.get(id), this._altFor("M", id));
                 for (const f in v) sums[f] = (sums[f] || 0) + v[f];
             });
+            // aktivite süreleri birbirine eşit; üst toplam sadece GUG
+            if (this._gugVals) {
+                this._dates.forEach(d => { sums[fieldOf(d, ACT_PARAM)] = null; });
+                this._ids.forEach(id => {
+                    const g = this._gugVals.get(id);
+                    if (g) for (const d in g) { const f = fieldOf(d, ACT_PARAM); sums[f] = (sums[f] || 0) + g[d]; }
+                });
+            }
             return this._addTotals(sums);
         }
 
@@ -939,8 +950,23 @@
         async _loadMaterialValues(token) {
             const vals = new Map();
             try {
-                const rows = await this._get("FactDataAggregation", { $select: "ZMALZEME,Date,ZPARAMETRE,ZMIKTAR", $filter: this._baseFilter });
+                const [rows, gugRows] = await Promise.all([
+                    this._get("FactDataAggregation", { $select: "ZMALZEME,Date,ZPARAMETRE,ZMIKTAR", $filter: this._baseFilter }),
+                    this._params.indexOf(ACT_PARAM) < 0 ? null : this._get("FactDataAggregation", {
+                        $select: "ZMALZEME,Date,ZMIKTAR", $filter: `${this._scopeFilter} and ZPARAMETRE eq '${ACT_PARAM}' and ZMASRAF_OGESI eq '${TOTAL_ACT}'`
+                    })
+                ]);
                 if (token !== this._token) return;
+                if (gugRows) {
+                    const gug = new Map();
+                    gugRows.forEach(r => {
+                        if (!r.ZMIKTAR) return;
+                        if (!gug.has(r.ZMALZEME)) gug.set(r.ZMALZEME, {});
+                        const g = gug.get(r.ZMALZEME);
+                        g[r.Date] = (g[r.Date] || 0) + r.ZMIKTAR;
+                    });
+                    this._gugVals = gug;
+                }
                 rows.forEach(r => {
                     if (!this._allIndex.has(r.ZMALZEME)) return;
                     if (!vals.has(r.ZMALZEME)) vals.set(r.ZMALZEME, {});
