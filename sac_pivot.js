@@ -207,6 +207,7 @@
             .cbtn.on { border-color: #ff0000; background: #ffe8e8; }
             .bud { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; margin-left: 6px; font: 10px Arial, sans-serif; color: #b0b0b0; cursor: pointer; }
             .bud input { width: 11px; height: 11px; margin: 0; }
+            .bud.off { opacity: .45; cursor: default; }
             #status.error { color: #bb0000; white-space: pre-wrap; }
             #table { flex: 1 1 auto; min-height: 0; font-size: 12px; }
             .tabulator { border: 0 !important; background: #fff !important; font-size: 12px; color: #333; }
@@ -278,7 +279,7 @@
             .pop-f .primary:hover { background: #ff3333; }
         </style>
         <div class="wrap">
-            <div class="bar"><label id="mSelWrap" hidden><select id="mSel" title="Measure"></select></label><button id="xls">Excel'e aktar</button><span id="colSels"></span><label class="bud" title="İşaretliyse Actual versiyonu kolonların başında; bütçe de işaretliyse versiyonun fiili başlangıç–bitiş dönemi (ACT_START–ACT_END)"><input type="checkbox" id="act">fiili</label><label class="bud" title="İşaretliyse sadece Date 000000, boş ve versiyonun bütçe başlangıç–bitiş dönemi"><input type="checkbox" id="bud" checked>bütçe</label><button class="cbtn" id="yrBtn" title="Bütçe döneminin kapsadığı yıllardan seçim">Yıl: Tümü ▾</button><div id="status">Yükleniyor…</div></div>
+            <div class="bar"><label id="mSelWrap" hidden><select id="mSel" title="Measure"></select></label><button id="xls">Excel'e aktar</button><span id="colSels"></span><label class="bud" id="actWrap" title="Kolonda Versiyon varsa: işaretliyse Actual versiyonu en başta; bütçe de işaretliyse versiyonun fiili dönemi (ACT_START–ACT_END)"><input type="checkbox" id="act">fiili</label><label class="bud" title="İşaretliyse sadece Date 000000, boş ve versiyonun bütçe başlangıç–bitiş dönemi"><input type="checkbox" id="bud" checked>bütçe</label><button class="cbtn" id="yrBtn" title="Bütçe döneminin kapsadığı yıllardan seçim">Yıl: Tümü ▾</button><div id="status">Yükleniyor…</div></div>
             <div id="table"></div>
             <div id="pop" class="pop" hidden>
                 <div class="pop-h"><span id="popTitle"></span><button class="x" id="popClose" title="Kapat">×</button></div>
@@ -317,8 +318,10 @@
             TUTAR_MEASURES.forEach(id => this._mSel.add(new Option(id, id)));
             this._tutar = TUTAR_MEASURES[0];
             this._mSel.addEventListener("change", () => this.setMeasureSelection(this._mSel.value));
-            this._actual = false;
-            shadowRoot.getElementById("act").addEventListener("change", (e) => { this._actual = e.target.checked; this._scheduleReload(); });
+            this._actual = null;
+            this._actEl = shadowRoot.getElementById("act");
+            this._actWrap = shadowRoot.getElementById("actWrap");
+            this._actEl.addEventListener("change", (e) => { this._actual = e.target.checked; this._scheduleReload(); });
             this._budget = true;
             shadowRoot.getElementById("bud").addEventListener("change", (e) => { this._budget = e.target.checked; this._scheduleReload(); });
             this._yearText = "";
@@ -428,12 +431,14 @@
             const filters = parseFilters(this.filters);
             SCRIPT_ONLY.forEach(([d]) => filters.delete(d));
             this._override.forEach((vals, dim) => { if (vals.length) filters.set(dim, vals); else filters.delete(dim); });
-            const actOn = this._actual && (filters.get("Version") || []).length > 0;
+            const hasV = cols.some(d => d.id === "Version");
+            const actTick = hasV && this._actual !== false;
+            this._actEl.disabled = !hasV;
+            this._actEl.checked = actTick;
+            this._actWrap.classList.toggle("off", !hasV);
             const vers = (filters.get("Version") || []).filter(v => v !== ACTUAL);
-            if (actOn) {
-                filters.set("Version", [ACTUAL].concat(vers));
-                if (!cols.some(d => d.id === "Version")) cols.unshift({ id: "Version", base: "Version", attr: "", label: DIM_LABEL.Version });
-            }
+            const actOn = actTick && vers.length > 0;
+            if (actOn) filters.set("Version", [ACTUAL].concat(vers));
             const fl = Array.from(filters.entries()).sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
             const sig = JSON.stringify([pid, rows, cols, measures, fl, actOn, this._budget, this._yearText, Array.from(this._colSel.entries()).map(([k, c]) => [k, c.clause]).sort()]);
             return { pid, rows, cols, measures, filters, sig, actOn, vers };
@@ -531,7 +536,7 @@
                 Object.assign(this, { _cols: colState.cols, _totCols: colState.totCols, _vUsed: colState.vUsed });
                 this._colIndex = new Map(this._cols.map(c => [c.vals.join(SEP), c.ci]));
                 this._tParams = new Map();
-                this._totCols.forEach(t => { if (t.param !== undefined) this._tParams.set(t.param, Number(t.field.slice(1, t.field.indexOf("_")))); });
+                this._totCols.forEach(t => { if (t.tkey !== undefined) this._tParams.set(t.tkey, Number(t.field.slice(1, t.field.indexOf("_")))); });
                 this._byRow = new Map();
                 this._rows.forEach(row => {
                     for (const k in row) if (/^v\d+_\d+$/.test(k)) delete row[k];
@@ -681,7 +686,10 @@
             const af = attrFilters.map(d => [d, new Set(p.filters.get(d.id))]);
             const withTotal = p.cols.length > 0;
             const pIdx = p.cols.length > 1 ? p.cols.findIndex(d => d.id === "ZPARAMETRE") : -1;
-            const aIdx = p.actOn && p.vers.length ? p.cols.findIndex(d => d.id === "Version") : -1;
+            const vIdx = p.cols.findIndex(d => d.id === "Version");
+            const dIdx = p.cols.findIndex(d => d.id === "Date");
+            const vyOn = vIdx >= 0 && dIdx >= 0;
+            const yearOf = (d) => /^\d{6}$/.test(d) && d !== "000000" ? d.slice(0, 4) : "";
             const tParams = fixed ? fixed.tParams : new Map();
             const tUsed = new Set();
             const byRow = fixed ? fixed.byRow : new Map();
@@ -702,14 +710,15 @@
                 const f = `v${ci}_${mi}`;
                 row[f] = (row[f] || 0) + x;
                 vUsed.add(f);
-                if (!withTotal || (aIdx >= 0 && (byCi ? byCi.get(ci) : cols[ci]).vals[aIdx] === ACTUAL)) return;
+                if (!withTotal) return;
                 let tf = "t_" + mi;
-                if (pIdx >= 0) {
-                    const pv = (byCi ? byCi.get(ci) : cols[ci]).vals[pIdx];
-                    let k = tParams.get(pv);
+                if (pIdx >= 0 || vyOn) {
+                    const cv = (byCi ? byCi.get(ci) : cols[ci]).vals;
+                    const tk = [vyOn ? yearOf(cv[dIdx]) : "", vyOn ? cv[vIdx] : "", pIdx >= 0 ? cv[pIdx] : ""].join(SEP);
+                    let k = tParams.get(tk);
                     if (k === undefined) {
                         if (fixed) return;
-                        tParams.set(pv, k = tParams.size);
+                        tParams.set(tk, k = tParams.size);
                     }
                     tf = `t${k}_${mi}`;
                     tUsed.add(tf);
@@ -798,9 +807,13 @@
                 }
                 return 0;
             });
-            this._totCols = !withTotal ? [] : pIdx < 0 ? mIds.map((m, mi) => ({ field: "t_" + mi, mi }))
-                : [].concat(...Array.from(tParams.keys()).sort(orders[pIdx]).map(pv => mIds.map((m, mi) => ({ field: `t${tParams.get(pv)}_${mi}`, mi, param: pv }))))
-                    .filter(t => tUsed.has(t.field));
+            const tKeys = Array.from(tParams.keys()).map(tk => tk.split(SEP));
+            tKeys.sort((a, b) => (a[0] === "") - (b[0] === "") || cmpCode(a[0], b[0]) || (vyOn ? orders[vIdx](a[1], b[1]) : 0) || (pIdx >= 0 ? orders[pIdx](a[2], b[2]) : 0));
+            this._totCols = !withTotal ? [] : pIdx < 0 && !vyOn ? mIds.map((m, mi) => ({ field: "t_" + mi, mi }))
+                : [].concat(...tKeys.map(k => mIds.map((m, mi) => ({
+                    field: `t${tParams.get(k.join(SEP))}_${mi}`, mi, tkey: k.join(SEP),
+                    year: vyOn ? k[0] : undefined, ver: vyOn ? k[1] : undefined, param: pIdx >= 0 ? k[2] : undefined
+                })))).filter(t => tUsed.has(t.field));
             const rows = Array.from(byRow.values());
             rows.sort((a, b) => {
                 for (let i = 0; i < rowIds.length; i++) {
@@ -866,13 +879,36 @@
                 : used.has(`v${this._cols[0].ci}_0`) ? [leaf(this._cols[0], 0, ms[0].label)] : [];
             if (nc && defs.length && this._totCols.length) {
                 const byParam = this._totCols[0].param !== undefined;
-                const tot = this._totCols.map(t => {
+                const vy = this._totCols[0].ver !== undefined;
+                const inner = (t) => {
                     const pl = byParam ? this._label("ZPARAMETRE", t.param) : "";
-                    const title = byParam ? (ms.length > 1 ? `${pl} ${ms[t.mi].label}` : pl) : ms.length > 1 ? ms[t.mi].label : "Toplam";
-                    return { title, field: t.field, headerTooltip: "Satır toplamı", headerWordWrap: true, width: 115, hozAlign: "right", formatter: numFormatter, accessorClipboard: numCopy, cssClass: "tot" };
-                });
-                this._leaves.unshift(...tot.map(c => ({ field: c.field, title: c.title === "Toplam" ? c.title : `Toplam / ${c.title}` })));
-                defs.unshift(tot.length > 1 || byParam ? { title: "Toplam", cssClass: "pgroup", columns: tot } : tot[0]);
+                    return byParam ? (ms.length > 1 ? `${pl} ${ms[t.mi].label}` : pl) : ms.length > 1 ? ms[t.mi].label : "";
+                };
+                const yearT = (t) => t.year || "Dönemsiz";
+                const mk = (t, title) => ({ title, field: t.field, headerTooltip: "Satır toplamı", headerWordWrap: true, width: 115, hozAlign: "right", formatter: numFormatter, accessorClipboard: numCopy, cssClass: t.ver === ACTUAL ? "tot act" : "tot" });
+                this._leaves.unshift(...this._totCols.map(t => ({ field: t.field, title: ["Toplam"].concat(vy ? [yearT(t), this._label("Version", t.ver)] : [], inner(t) ? [inner(t)] : []).join(" / ") })));
+                if (!vy) {
+                    const tot = this._totCols.map(t => mk(t, inner(t) || "Toplam"));
+                    defs.unshift(tot.length > 1 || byParam ? { title: "Toplam", cssClass: "pgroup", columns: tot } : tot[0]);
+                } else {
+                    const years = [];
+                    this._totCols.forEach(t => {
+                        let y = years[years.length - 1];
+                        if (!y || y.year !== t.year) years.push(y = { year: t.year, vers: [] });
+                        let v = y.vers[y.vers.length - 1];
+                        if (!v || v.ver !== t.ver) y.vers.push(v = { ver: t.ver, list: [] });
+                        v.list.push(t);
+                    });
+                    defs.unshift({
+                        title: "Toplam", cssClass: "pgroup", columns: years.map(y => ({
+                            title: y.year || "Dönemsiz", cssClass: "pgroup", columns: y.vers.map(v => {
+                                const vl = this._label("Version", v.ver);
+                                if (v.list.length === 1 && !inner(v.list[0])) return mk(v.list[0], vl);
+                                return { title: vl, headerTooltip: v.ver, cssClass: v.ver === ACTUAL ? "pgroup act" : "pgroup", columns: v.list.map(t => mk(t, inner(t))) };
+                            })
+                        }))
+                    });
+                }
             }
             const firstLeaf = (c) => c.columns ? firstLeaf(c.columns[0]) : c;
             defs.forEach(c => { const l = firstLeaf(c); l.cssClass = l.cssClass ? l.cssClass + " pstart" : "pstart"; });
