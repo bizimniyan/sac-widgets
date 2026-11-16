@@ -11,6 +11,7 @@
     const SUP_PARAMS = new Set(["USM0008"]);
     const TUTAR_MEASURES = ["ZTUTAR", "ZTUTAR_EUR", "ZTUTAR_USD", "ZTUTAR_TRY"];
     const SEP = "\u0001";
+    const ACTUAL = "public.Actual";
     const BLOCK = 200;
     const ROW_H = 26;
     const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -238,6 +239,7 @@
             .tabulator .tabulator-header .tabulator-col.tabulator-range-highlight, .tabulator .tabulator-header .tabulator-col.tabulator-range-selected { background: #ffecec !important; color: inherit !important; }
             .tabulator-row .tabulator-cell.dash { color: #cfcfcf; font-weight: 400; }
             .tabulator-row .tabulator-cell.tot { font-weight: 600; }
+            .tabulator-row .tabulator-cell.act, .tabulator .tabulator-header .tabulator-col.act { background-color: #f3f3f3 !important; }
             .kod-f { display: flex; gap: 3px; margin-top: 6px; }
             .kod-f input { flex: 1 1 auto; min-width: 0; font: 11px Arial, sans-serif; padding: 2px 4px; border: 1px solid #dadada; border-radius: 3px; color: #333; }
             .kod-f input.on { border-color: #ff0000; background: #ffe8e8; }
@@ -276,7 +278,7 @@
             .pop-f .primary:hover { background: #ff3333; }
         </style>
         <div class="wrap">
-            <div class="bar"><label id="mSelWrap" hidden><select id="mSel" title="Measure"></select></label><button id="xls">Excel'e aktar</button><span id="colSels"></span><label class="bud" title="İşaretliyse sadece Date 000000, boş ve versiyonun bütçe başlangıç–bitiş dönemi"><input type="checkbox" id="bud" checked>bütçe</label><button class="cbtn" id="yrBtn" title="Bütçe döneminin kapsadığı yıllardan seçim">Yıl: Tümü ▾</button><div id="status">Yükleniyor…</div></div>
+            <div class="bar"><label id="mSelWrap" hidden><select id="mSel" title="Measure"></select></label><button id="xls">Excel'e aktar</button><span id="colSels"></span><label class="bud" title="İşaretliyse Actual versiyonu kolonların başında; bütçe de işaretliyse versiyonun fiili başlangıç–bitiş dönemi (ACT_START–ACT_END)"><input type="checkbox" id="act">fiili</label><label class="bud" title="İşaretliyse sadece Date 000000, boş ve versiyonun bütçe başlangıç–bitiş dönemi"><input type="checkbox" id="bud" checked>bütçe</label><button class="cbtn" id="yrBtn" title="Bütçe döneminin kapsadığı yıllardan seçim">Yıl: Tümü ▾</button><div id="status">Yükleniyor…</div></div>
             <div id="table"></div>
             <div id="pop" class="pop" hidden>
                 <div class="pop-h"><span id="popTitle"></span><button class="x" id="popClose" title="Kapat">×</button></div>
@@ -315,6 +317,8 @@
             TUTAR_MEASURES.forEach(id => this._mSel.add(new Option(id, id)));
             this._tutar = TUTAR_MEASURES[0];
             this._mSel.addEventListener("change", () => this.setMeasureSelection(this._mSel.value));
+            this._actual = false;
+            shadowRoot.getElementById("act").addEventListener("change", (e) => { this._actual = e.target.checked; this._scheduleReload(); });
             this._budget = true;
             shadowRoot.getElementById("bud").addEventListener("change", (e) => { this._budget = e.target.checked; this._scheduleReload(); });
             this._yearText = "";
@@ -424,9 +428,15 @@
             const filters = parseFilters(this.filters);
             SCRIPT_ONLY.forEach(([d]) => filters.delete(d));
             this._override.forEach((vals, dim) => { if (vals.length) filters.set(dim, vals); else filters.delete(dim); });
+            const actOn = this._actual && (filters.get("Version") || []).length > 0;
+            const vers = (filters.get("Version") || []).filter(v => v !== ACTUAL);
+            if (actOn) {
+                filters.set("Version", [ACTUAL].concat(vers));
+                if (!cols.some(d => d.id === "Version")) cols.unshift({ id: "Version", base: "Version", attr: "", label: DIM_LABEL.Version });
+            }
             const fl = Array.from(filters.entries()).sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
-            const sig = JSON.stringify([pid, rows, cols, measures, fl, this._budget, this._yearText, Array.from(this._colSel.entries()).map(([k, c]) => [k, c.clause]).sort()]);
-            return { pid, rows, cols, measures, filters, sig };
+            const sig = JSON.stringify([pid, rows, cols, measures, fl, actOn, this._budget, this._yearText, Array.from(this._colSel.entries()).map(([k, c]) => [k, c.clause]).sort()]);
+            return { pid, rows, cols, measures, filters, sig, actOn, vers };
         }
 
         _reload(force) {
@@ -467,7 +477,7 @@
             filter = and(filter, budget);
             this._baseFilter = filter;
             this._mIds = Array.from(new Set(mIds));
-            const colDims = p.cols.filter(d => d.id !== "Date" && !d.attr && [].indexOf(d.base) < 0);
+            const colDims = p.cols.filter(d => d.id !== "Date" && !(p.actOn && d.id === "Version") && !d.attr && [].indexOf(d.base) < 0);
             Array.from(this._colSel.keys()).forEach(k => { if (!colDims.some(d => d.id === k)) this._colSel.delete(k); });
             this._renderColBtns(colDims);
             filter = and(filter, Array.from(this._colSel.values()).map(c => c.clause).join(" and "));
@@ -649,6 +659,7 @@
             const d = this._desc.get(dim);
             const desc = d && d.get(v);
             if (!v) return desc || "(boş)";
+            if (dim === "Version") return v.replace(/^public[.]/, "");
             return !desc ? v : DESC_ONLY.has(dim) ? desc : `${v} - ${desc}`;
         }
 
@@ -670,6 +681,7 @@
             const af = attrFilters.map(d => [d, new Set(p.filters.get(d.id))]);
             const withTotal = p.cols.length > 0;
             const pIdx = p.cols.length > 1 ? p.cols.findIndex(d => d.id === "ZPARAMETRE") : -1;
+            const aIdx = p.actOn && p.vers.length ? p.cols.findIndex(d => d.id === "Version") : -1;
             const tParams = fixed ? fixed.tParams : new Map();
             const tUsed = new Set();
             const byRow = fixed ? fixed.byRow : new Map();
@@ -690,7 +702,7 @@
                 const f = `v${ci}_${mi}`;
                 row[f] = (row[f] || 0) + x;
                 vUsed.add(f);
-                if (!withTotal) return;
+                if (!withTotal || (aIdx >= 0 && (byCi ? byCi.get(ci) : cols[ci]).vals[aIdx] === ACTUAL)) return;
                 let tf = "t_" + mi;
                 if (pIdx >= 0) {
                     const pv = (byCi ? byCi.get(ci) : cols[ci]).vals[pIdx];
@@ -808,6 +820,9 @@
             const ms = p.measures;
             const nc = colIds.length;
             this._leaves = [];
+            const vIdx = colIds.indexOf("Version");
+            const isAct = (list) => vIdx >= 0 && list.every(c => c.vals[vIdx] === ACTUAL);
+            const grp = (list) => isAct(list) ? "pgroup act" : "pgroup";
             const leaf = (c, mi, title) => {
                 const path = c.vals.map((v, i) => this._label(colIds[i], v));
                 if (ms.length > 1 || !nc) path.push(ms[mi].label);
@@ -815,7 +830,7 @@
                 this._leaves.push({ field, title: path.join(" / ") });
                 return {
                     title, field, headerTooltip: c.vals.concat(ms.length > 1 || !nc ? [ms[mi].id] : []).join(" / "), headerWordWrap: true,
-                    width: 105, hozAlign: "right", formatter: numFormatter, accessorClipboard: numCopy
+                    width: 105, hozAlign: "right", formatter: numFormatter, accessorClipboard: numCopy, cssClass: isAct([c]) ? "act" : undefined
                 };
             };
             const used = this._vUsed;
@@ -828,7 +843,7 @@
                     return ms.map((m, k) => {
                         const sub = list.filter(c => used.has(`v${c.ci}_${k}`));
                         if (!sub.length) return null;
-                        return last ? leaf(sub[0], k, m.label) : { title: m.label, headerTooltip: m.id, cssClass: "pgroup", columns: build(sub, si + 1, k) };
+                        return last ? leaf(sub[0], k, m.label) : { title: m.label, headerTooltip: m.id, cssClass: grp(sub), columns: build(sub, si + 1, k) };
                     }).filter(Boolean);
                 }
                 const groups = [];
@@ -844,7 +859,7 @@
                         return used.has(`v${g.list[0].ci}_${k}`) ? leaf(g.list[0], k, title) : null;
                     }
                     const kids = build(g.list, si + 1, mi);
-                    return kids.length ? { title, headerTooltip: g.v, cssClass: "pgroup", columns: kids } : null;
+                    return kids.length ? { title, headerTooltip: g.v, cssClass: grp(g.list), columns: kids } : null;
                 }).filter(Boolean);
             };
             const defs = !this._cols.length ? [] : slots.length ? build(this._cols, 0)
@@ -1214,12 +1229,14 @@
             const vers = (this._budget && p.filters.get("Version")) || [];
             if (!vers.length) return "";
             if (!this._versions.has(p.pid)) {
-                const pr = this._get("VersionMaster", {}).then(rows => new Map(rows.map(r => [r.ID, { s: r.BUD_START || "", e: r.BUD_END || "" }])));
+                const pr = this._get("VersionMaster", {}).then(rows => new Map(rows.map(r => [r.ID, { s: r.BUD_START || "", e: r.BUD_END || "", as: r.ACT_START || "", ae: r.ACT_END || "" }])));
                 this._versions.set(p.pid, pr);
                 pr.catch(() => this._versions.delete(p.pid));
             }
             const vm = await this._versions.get(p.pid);
+            const act = Array.from(new Set(p.vers.map(v => vm.get(v)).filter(b => b && b.as && b.ae).map(b => `(Date ge '${q(b.as)}' and Date le '${q(b.ae)}')`)));
             const parts = vers.map(v => {
+                if (v === ACTUAL && p.actOn && act.length) return `(Version eq '${q(v)}' and (Date eq '000000' or Date eq '#' or ${act.length === 1 ? act[0] : "(" + act.join(" or ") + ")"}))`;
                 const b = vm.get(v);
                 return b && b.s && b.e ? `(Version eq '${q(v)}' and (Date eq '000000' or Date eq '#' or ${this._yearRange(b)}))` : `Version eq '${q(v)}'`;
             });
