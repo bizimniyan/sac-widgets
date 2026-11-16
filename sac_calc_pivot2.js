@@ -422,7 +422,7 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
             .tabulator-row .tabulator-cell.tot { font-weight: 600; }
             #rowSels { flex: 0 0 auto; display: flex; gap: 4px; margin-right: 4px; }
             .tree .tabulator-row.tabulator-tree-level-0:not(.row-total) { font-weight: 800; color: #111; }
-            .tree .tabulator-row.tabulator-tree-level-1 { font-weight: 600; color: #262626; }
+            .tree .tabulator-row.tabulator-tree-level-1 { font-weight: 400; color: #262626; }
             .tree .tabulator-row.tabulator-tree-level-2, .tree .tabulator-row.tabulator-tree-level-3 { font-weight: 400; color: #3a3a3a; }
             .tree .tabulator-row.leaf:not(.row-total) { font-weight: 400; color: #5f5f5f; }
             .tabulator-row .tabulator-data-tree-control { border: 1px solid #bdbdbd !important; background: #fff !important; }
