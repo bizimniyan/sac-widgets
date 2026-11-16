@@ -420,6 +420,17 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
             .tabulator .tabulator-header .tabulator-col.tabulator-range-highlight, .tabulator .tabulator-header .tabulator-col.tabulator-range-selected { background: #ffecec !important; color: inherit !important; }
             .tabulator-row .tabulator-cell.dash { color: #cfcfcf; font-weight: 400; }
             .tabulator-row .tabulator-cell.tot { font-weight: 600; }
+            #rowSels { flex: 0 0 auto; display: flex; gap: 4px; margin-right: 4px; }
+            .tree .tabulator-row.tabulator-tree-level-0:not(.row-total) { font-weight: 800; color: #111; }
+            .tree .tabulator-row.tabulator-tree-level-1 { font-weight: 600; color: #262626; }
+            .tree .tabulator-row.tabulator-tree-level-2, .tree .tabulator-row.tabulator-tree-level-3 { font-weight: 400; color: #3a3a3a; }
+            .tree .tabulator-row.leaf:not(.row-total) { font-weight: 400; color: #5f5f5f; }
+            .tabulator-row .tabulator-data-tree-control { border: 1px solid #bdbdbd !important; background: #fff !important; }
+            .tabulator-row .tabulator-data-tree-control .tabulator-data-tree-control-expand, .tabulator-row .tabulator-data-tree-control .tabulator-data-tree-control-expand:after,
+            .tabulator-row .tabulator-data-tree-control .tabulator-data-tree-control-collapse:after { background: #7a7a7a !important; }
+            .tabulator-row .tabulator-data-tree-branch { border-color: #d6d6d6 !important; }
+            .tabulator-row.leaf .tabulator-data-tree-branch { margin-right: 23px; }
+            ${Array.from({ length: 12 }, (_, i) => `.tabulator-row.tabulator-tree-level-${i + 1} .tabulator-data-tree-branch { margin-left: ${9 * i + 22 * (i + 1)}px !important; }`).join("\n            ")}
             .kod-f { display: flex; gap: 3px; margin-top: 6px; }
             .kod-f input { flex: 1 1 auto; min-width: 0; font: 11px Arial, sans-serif; padding: 2px 4px; border: 1px solid #dadada; border-radius: 3px; color: #333; }
             .kod-f input.on { border-color: #ff0000; background: #ffe8e8; }
@@ -458,7 +469,7 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
             .pop-f .primary:hover { background: #ff3333; }
         </style>
         <div class="wrap">
-            <div class="bar"><label id="mSelWrap" hidden><select id="mSel" title="Measure"></select></label><button id="xls">Excel'e aktar</button><span id="colSels"></span><label class="bud" title="İşaretliyse sadece Date 000000, boş ve versiyonun bütçe başlangıç–bitiş dönemi"><input type="checkbox" id="bud" checked>bütçe</label><button class="cbtn" id="yrBtn" title="Bütçe döneminin kapsadığı yıllardan seçim">Yıl: Tümü ▾</button><div id="status">Yükleniyor…</div></div>
+            <div class="bar"><label id="mSelWrap" hidden><select id="mSel" title="Measure"></select></label><button id="xls">Excel'e aktar</button><span id="rowSels"></span><span id="colSels"></span><label class="bud" title="İşaretliyse sadece Date 000000, boş ve versiyonun bütçe başlangıç–bitiş dönemi"><input type="checkbox" id="bud" checked>bütçe</label><button class="cbtn" id="yrBtn" title="Bütçe döneminin kapsadığı yıllardan seçim">Yıl: Tümü ▾</button><div id="status">Yükleniyor…</div></div>
             <div id="table"></div>
             <div id="pop" class="pop" hidden>
                 <div class="pop-h"><span id="popTitle"></span><button class="x" id="popClose" title="Kapat">×</button></div>
@@ -504,6 +515,9 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
             this._yrBtn.addEventListener("click", () => this._openYearPopup(this._yrBtn));
             shadowRoot.getElementById("bud").addEventListener("change", (e) => { this._yrBtn.hidden = !e.target.checked; });
             this._colSelsEl = shadowRoot.getElementById("colSels");
+            this._rowSelsEl = shadowRoot.getElementById("rowSels");
+            this._open = new Set();
+            this._closed = new Set();
             this._colSel = new Map();
             this._colIds = new Map();
             this._colAll = new Map();
@@ -730,7 +744,10 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
                     this._setStatus("Bu filtrelerle veri yok.");
                     return;
                 }
-                this._blockOn = !d0.attr && d0.id !== "ZCURRENCY" && this._rows.every(r => r.r0 !== "");
+                this._tree = p.rows.length > 1;
+                this._open = new Set();
+                this._closed = new Set();
+                this._blockOn = !this._tree && !d0.attr && d0.id !== "ZCURRENCY" && this._rows.every(r => r.r0 !== "");
                 this._preWild = this._blockOn ? this._get("FactDataAggregation", { $select: sel, $filter: and(filter, `${d0.id} eq '#'`) }) : null;
                 if (this._preWild) this._preWild.catch(() => {});
                 this._buildTable(p);
@@ -1107,6 +1124,8 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
             });
             row.r0 = "Toplam";
             if (this._twoCols(this._rowDims[0].id)) row.r0d = this._full ? `${nf.format(shown.length)} satır` : "hesaplanıyor…";
+            row.code = "Toplam";
+            row.desc = this._full ? `${nf.format(shown.length)} satır` : "hesaplanıyor…";
             const fields = this._leaves.map(c => c.field);
             fields.forEach(f => { row[f] = null; });
             if (!this._full) return row;
@@ -1121,11 +1140,54 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
             this._inputs.forEach((input, dim) => input.classList.toggle("on", this._sel.has(dim)));
             if (!this._table) return;
             this._shown = this._filtered();
-            this._table.replaceData([this._totalRow()].concat(this._shown)).then(() => this._loadVisible());
+            if (this._tree) this._renderRowBtns();
+            this._table.replaceData([this._totalRow()].concat(this._tree ? this._treeData(this._shown) : this._shown)).then(() => this._loadVisible());
             this._updateStatus();
         }
 
+        _treeData(leaves) {
+            const n = this._rowDims.length;
+            const top = [];
+            const nodes = new Map();
+            const wait = !this._full;
+            leaves.forEach(r => {
+                let list = top, path = "";
+                for (let i = 0; i < n - 1; i++) {
+                    path += SEP + r["r" + i];
+                    let node = nodes.get(path);
+                    if (!node) {
+                        node = { key: "N" + i + path, code: r["r" + i], desc: r[`r${i}d`] || "", _lvl: i, _wait: wait, _children: [] };
+                        nodes.set(path, node);
+                        list.push(node);
+                    }
+                    for (const k in r) if (ATOM_KEY.test(k)) node[k] = (node[k] || 0) + r[k];
+                    list = node._children;
+                }
+                list.push(Object.assign({}, r, { code: r["r" + (n - 1)], desc: r[`r${n - 1}d`] || "", _lvl: n - 1 }));
+            });
+            // oranlar düğümde toplanmış bileşenlerden yeniden hesaplanır
+            nodes.forEach(node => this._calcRow(node));
+            return top;
+        }
+
+        _renderRowBtns() {
+            this._rowSelsEl.innerHTML = "";
+            this._rowDims.forEach((d, i) => {
+                const b = document.createElement("button");
+                b.className = "cbtn";
+                const t = this._sel.get(d.id);
+                b.textContent = `${d.label}: ${!t ? "Tümü" : t.length > 18 ? t.slice(0, 18) + "…" : t} ▾`;
+                b.title = t || "";
+                b.classList.toggle("on", !!t);
+                b.addEventListener("click", () => this._openPopup(i, b));
+                this._rowSelsEl.appendChild(b);
+            });
+        }
+
         _buildTable(p) {
+            if (this._tree) return this._buildTree(p);
+            this._rowSelsEl.innerHTML = "";
+            this._tableEl.classList.remove("tree");
             this._destroyTable();
             this._inputs = new Map();
             const columns = [];
@@ -1166,6 +1228,59 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
                 if (this._scrollTimer) return;
                 this._scrollTimer = setTimeout(() => { this._scrollTimer = null; this._loadVisible(); }, 100);
             });
+        }
+
+        _buildTree(p) {
+            this._destroyTable();
+            this._inputs = new Map();
+            this._tableEl.classList.add("tree");
+            const label = (cell) => {
+                const d = cell.getData();
+                if (d._total) return d.code;
+                const dim = this._rowDims[d._lvl];
+                return d.code === "" ? "(boş)" : dim && DESC_ONLY.has(dim.id) && d.desc ? d.desc : d.code;
+            };
+            const fz = parseInt(this.freezeCols, 10);
+            const columns = [
+                { title: p.rows.map(d => d.label).join(" › "), field: "code", width: 260, formatter: label, accessorClipboard: textCopy },
+                { title: "Tanım", field: "desc", width: 230, cssClass: "soft" }
+            ];
+            columns.forEach((c, k) => { c.frozen = k < (fz > 0 ? fz : 2); });
+            const valueDefs = this._columnDefs(p);
+            this._shown = this._filtered();
+            this._renderRowBtns();
+            this._table = new window.Tabulator(this._tableEl, {
+                index: "key",
+                data: [this._totalRow()].concat(this._treeData(this._shown)),
+                frozenRows: 1,
+                height: "100%",
+                rowHeight: 26,
+                layout: "fitData",
+                columns: columns.concat(valueDefs),
+                columnDefaults: { headerSort: false, resizable: "header", accessorClipboard: textCopy },
+                selectableRange: 1,
+                selectableRangeColumns: true,
+                clipboard: "copy",
+                clipboardCopyRowRange: "range",
+                clipboardCopyStyled: false,
+                clipboardCopyConfig: { columnHeaders: false, columnGroups: false, rowHeaders: false, columnCalcs: false, dataTree: false },
+                dataTree: true,
+                dataTreeChildIndent: 22,
+                dataTreeElementColumn: "code",
+                // açılışta Grup 1 açık (Grup 2'ler görünür); kullanıcının aç/kapa durumu yeniden yüklemede korunur
+                dataTreeStartExpanded: (row, level) => {
+                    const k = row.getData().key;
+                    return this._open.has(k) || (level === 0 && !this._closed.has(k));
+                },
+                placeholder: "Seçime uyan satır yok",
+                rowFormatter: (row) => {
+                    const d = row.getData();
+                    row.getElement().classList.toggle("leaf", !(Array.isArray(d._children) && d._children.length));
+                    if (d._total) row.getElement().classList.add("row-total");
+                }
+            });
+            this._table.on("dataTreeRowExpanded", (row) => { const k = row.getData().key; this._open.add(k); this._closed.delete(k); });
+            this._table.on("dataTreeRowCollapsed", (row) => { const k = row.getData().key; this._open.delete(k); this._closed.add(k); });
         }
 
         _buildHeader(i, d) {
