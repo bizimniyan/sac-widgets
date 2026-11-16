@@ -668,6 +668,8 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
             const mIds = Array.from(new Set(plan.atoms.map(a => a.base)));
             filter = and(filter, nzF(mIds));
             filter = and(filter, budget);
+            // müşterisi # olan TRNSFR girdi satırları dağıtılmış PREDGTM ile çift sayılıyor
+            filter = and(filter, "ZMUSTERI ne '#'");
             this._baseFilter = filter;
             this._mIds = mIds;
             const colDims = p.cols.filter(d => d.id !== "Date" && !d.attr && qDims.indexOf(d.base) < 0);
