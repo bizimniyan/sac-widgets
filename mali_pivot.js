@@ -153,6 +153,35 @@
         return a < b ? -1 : a > b ? 1 : 0;
     };
     const BLANK = "(boş)";
+    const SUB_ID = "Toplam";
+    const parseNum = (t) => {
+        let x = String(t).replace(/\s/g, "");
+        if (x.indexOf(",") >= 0) x = x.replace(/\./g, "").replace(",", ".");
+        else if (/^-?\d{1,3}(\.\d{3})+$/.test(x)) x = x.replace(/\./g, "");
+        const n = Number(x);
+        return x !== "" && isFinite(n) ? n : NaN;
+    };
+    const valMatcher = (text) => {
+        const fns = [];
+        String(text || "").split(/[;\n]/).map(s => s.trim()).filter(Boolean).forEach(tok => {
+            const low = tok.toLocaleLowerCase("tr-TR");
+            if (low === "boş" || low === "bos") return fns.push(v => v === null || v === undefined);
+            if (low === "dolu") return fns.push(v => v !== null && v !== undefined);
+            const r = tok.indexOf("..");
+            if (r > 0) {
+                const a = parseNum(tok.slice(0, r)), b = parseNum(tok.slice(r + 2));
+                if (!isNaN(a) && !isNaN(b)) fns.push(v => v !== null && v !== undefined && v >= Math.min(a, b) - 5e-4 && v <= Math.max(a, b) + 5e-4);
+                return;
+            }
+            const m = tok.match(/^(>=|<=|<>|!=|>|<|=)?\s*(.+)$/);
+            const n = m ? parseNum(m[2]) : NaN;
+            if (isNaN(n)) return;
+            const op = m[1] || "=";
+            const ok = { ">": v => v > n, "<": v => v < n, ">=": v => v >= n - 5e-4, "<=": v => v <= n + 5e-4, "=": v => Math.abs(v - n) < 5e-4, "!=": v => Math.abs(v - n) >= 5e-4, "<>": v => Math.abs(v - n) >= 5e-4 }[op];
+            fns.push(v => v !== null && v !== undefined && ok(v));
+        });
+        return fns.length ? v => fns.some(f => f(v)) : null;
+    };
     const quoteId = (id) => id === "" ? BLANK : /[*?;,!"]/.test(id) ? `"${id}"` : id;
     const parseToken = (tok) => {
         if (/^!?"/.test(tok)) return { low: tok, high: "" };
@@ -342,6 +371,9 @@
             this._token = 0;
             this._sel = new Map();
             this._match = new Map();
+            this._valSel = new Map();
+            this._valMatch = new Map();
+            this._valInputs = new Map();
             this._override = new Map();
             this._inputs = new Map();
             this._desc = new Map();
@@ -467,6 +499,8 @@
             this._bulkPromise = null;
             this._blocks = new Map();
             this._r0State = new Map();
+            this._valSel.clear();
+            this._valMatch.clear();
             if (!p.pid || !p.rows.length || !p.measures.length) {
                 this._destroyTable();
                 this._setStatus("Builder panelinden model, satır boyutları ve measure girin.");
@@ -595,6 +629,7 @@
             this._buildData(this._p, [recs], this._af, this._fixed(null));
             this._full = true;
             this._loadMs = Date.now() - t0;
+            this._dimIds = new Map();
             if (!this._dropZeros()) {
                 this._destroyTable();
                 this._setStatus("Bu filtrelerle sıfırdan farklı veri yok.");
@@ -849,7 +884,8 @@
                 this._leaves.push({ field, title: path.join(" / ") });
                 return {
                     title, field, headerTooltip: c.vals.concat(ms.length > 1 || !nc ? [ms[mi].id] : []).join(" / "), headerWordWrap: true,
-                    width: 105, hozAlign: "right", formatter: numFormatter, accessorClipboard: numCopy, cssClass: isAct([c]) ? "act" : undefined
+                    width: 105, hozAlign: "right", formatter: numFormatter, accessorClipboard: numCopy, cssClass: isAct([c]) ? "act" : undefined,
+                    titleFormatter: () => this._valHeader(field, title)
                 };
             };
             const used = this._vUsed;
@@ -891,7 +927,7 @@
                     return byParam ? (ms.length > 1 ? `${pl} ${ms[t.mi].label}` : pl) : ms.length > 1 ? ms[t.mi].label : "";
                 };
                 const yearT = (t) => t.year || "Dönemsiz";
-                const mk = (t, title) => ({ title, field: t.field, headerTooltip: "Satır toplamı", headerWordWrap: true, width: 115, hozAlign: "right", formatter: numFormatter, accessorClipboard: numCopy, cssClass: t.ver === ACTUAL ? "tot act" : "tot" });
+                const mk = (t, title) => ({ title, field: t.field, headerTooltip: "Satır toplamı", headerWordWrap: true, width: 115, hozAlign: "right", formatter: numFormatter, accessorClipboard: numCopy, cssClass: t.ver === ACTUAL ? "tot act" : "tot", titleFormatter: () => this._valHeader(t.field, title) });
                 this._leaves.unshift(...this._totCols.map(t => ({ field: t.field, title: ["Toplam"].concat(vy ? [yearT(t), this._label("Version", t.ver)] : [], inner(t) ? [inner(t)] : []).join(" / ") })));
                 if (!vy) {
                     const tot = this._totCols.map(t => mk(t, inner(t) || "Toplam"));
@@ -921,14 +957,55 @@
             return defs;
         }
 
+        _subLv() {
+            return Math.max(0, Math.min(parseInt(this.subtotalDims, 10) || 0, this._rowDims.length - 1));
+        }
+
+        _idsOf(i) {
+            if (!this._dimIds.has(i)) this._dimIds.set(i, Array.from(new Set(this._rows.map(r => r["r" + i]))).sort(cmpCode));
+            return this._dimIds.get(i);
+        }
+
+        // _agg: toplamlara giren satırlar; sadece "Toplam" seçili boyut toplamda filtrelenmez
         _filtered() {
-            const tests = [];
+            const disp = [];
             this._rowDims.forEach((d, i) => {
                 const m = this._match.get(d.id);
-                if (m) tests.push([`r${i}`, m]);
+                if (m) disp.push([i, m, this._idsOf(i).some(m)]);
             });
-            if (!tests.length) return this._rows;
-            return this._rows.filter(r => tests.every(([f, m]) => m(r[f])));
+            const vt = this._full ? Array.from(this._valMatch.entries()) : [];
+            this._disp = disp;
+            this._agg = this._rows.filter(r => disp.every(([i, m, any]) => !any || m(r["r" + i])) && vt.every(([f, m]) => m(r[f])));
+            return disp.every(([, , any]) => any) ? this._agg : [];
+        }
+
+        _valHeader(field, title) {
+            const el = document.createElement("div");
+            el.innerHTML = `<div></div><div class="kod-f"><input type="text" placeholder=">0, <0, 10..20"></div>`;
+            el.firstChild.textContent = title;
+            const box = el.querySelector(".kod-f");
+            const input = box.querySelector("input");
+            input.title = "Değer filtresi: >1000, <0, >=5, <=5, =0, !=0, 100..500, boş, dolu; birden fazlası ; ile (veya)";
+            input.value = this._valSel.get(field) || "";
+            input.classList.toggle("on", this._valSel.has(field));
+            this._valInputs.set(field, input);
+            stopEvents(box);
+            input.addEventListener("keydown", e => {
+                if (e.key === "Enter") this._setValSel(field, input.value);
+                if (e.key === "Escape") { input.value = this._valSel.get(field) || ""; input.blur(); }
+            });
+            input.addEventListener("change", () => this._setValSel(field, input.value));
+            return el;
+        }
+
+        _setValSel(field, text) {
+            const v = String(text || "").trim();
+            const m = valMatcher(v);
+            if (m) { this._valSel.set(field, v); this._valMatch.set(field, m); }
+            else { this._valSel.delete(field); this._valMatch.delete(field); }
+            const input = this._valInputs.get(field);
+            if (input) input.value = m ? v : "";
+            this._applyFilter();
         }
 
         _totalRow() {
@@ -943,22 +1020,27 @@
             const fields = this._leaves.map(c => c.field);
             fields.forEach(f => { row[f] = null; });
             if (!this._full) return row;
-            shown.forEach(r => {
+            (this._agg || shown).forEach(r => {
                 for (let i = 0; i < fields.length; i++) {
                     const v = r[fields[i]];
-                    if (v !== undefined) row[fields[i]] = (row[fields[i]] || 0) + v;
+                    if (v !== undefined && v !== null) row[fields[i]] = (row[fields[i]] || 0) + v;
                 }
             });
             return row;
         }
 
+        // ara toplam seviye l görünür: boyut l'de "Toplam" seçili, öncekilerde gerçek üye seçili
         _withSubs(shown) {
-            const lv = Math.min(parseInt(this.subtotalDims, 10) || 0, this._rowDims.length - 1);
+            const lv = this._subLv();
             if (lv <= 0) return shown;
+            const disp = this._disp || [];
+            const vis = [];
+            for (let l = 0; l < lv; l++) vis.push(disp.every(([j, m, any]) => j < l ? any : j === l ? m(SUB_ID) : true));
+            const detail = shown.length > 0;
             const fields = this._leaves.map(c => c.field);
             const out = [];
             const open = [];
-            shown.forEach(r => {
+            this._agg.forEach(r => {
                 let pk = "";
                 for (let l = 0; l < lv; l++) {
                     pk += (l ? SEP : "") + r["r" + l];
@@ -970,7 +1052,7 @@
                         });
                         fields.forEach(f => { s[f] = null; });
                         open[l] = { pk, s };
-                        out.push(s);
+                        if (vis[l]) out.push(s);
                     }
                     if (this._full) {
                         const s = open[l].s;
@@ -980,13 +1062,14 @@
                         }
                     }
                 }
-                out.push(r);
+                if (detail) out.push(r);
             });
             return out;
         }
 
         _applyFilter() {
             this._inputs.forEach((input, dim) => input.classList.toggle("on", this._sel.has(dim)));
+            this._valInputs.forEach((input, f) => input.classList.toggle("on", this._valSel.has(f)));
             if (!this._table) return;
             this._shown = this._filtered();
             this._table.replaceData([this._totalRow()].concat(this._withSubs(this._shown))).then(() => this._loadVisible());
@@ -995,6 +1078,7 @@
 
         _columns(p) {
             this._inputs = new Map();
+            this._valInputs = new Map();
             const columns = [];
             p.rows.forEach((d, i) => {
                 const descOnly = DESC_ONLY.has(d.id) && this._desc.has(d.id);
@@ -1066,7 +1150,7 @@
 
         async exportExcel() {
             if (this._exporting) return;
-            if (!this._table || !this._shown.length) {
+            if (!this._table || !this._agg || !this._agg.length) {
                 this._setStatus("Aktarılacak veri yok.");
                 return;
             }
@@ -1090,7 +1174,7 @@
                 leaves.forEach(c => head.push(c.title));
                 const file = xlsxFile(fflate, head.map((_, i) => colName(i)));
                 file.head(head);
-                const rows = this._shown;
+                const rows = this._withSubs(this._shown);
                 for (let n = 0; n < rows.length; n++) {
                     const r = rows[n];
                     const cells = [];
@@ -1219,10 +1303,10 @@
 
         _openPopup(i, btn) {
             const d = this._rowDims[i];
-            if (!this._dimIds.has(i)) this._dimIds.set(i, Array.from(new Set(this._rows.map(r => r["r" + i]))).sort(cmpCode));
+            const ids = i < this._subLv() ? [SUB_ID].concat(this._idsOf(i)) : this._idsOf(i);
             const input = this._inputs.get(d.id);
             if (input) input.value = this._sel.get(d.id) || "";
-            this._showPopup({ label: d.label, ids: this._dimIds.get(i), text: this._sel.get(d.id) || "", desc: this._desc.get(d.id), apply: (text) => this._setSel(d.id, text) }, btn);
+            this._showPopup({ label: d.label, ids, text: this._sel.get(d.id) || "", desc: this._desc.get(d.id), sub: i < this._subLv() ? `${d.label} ara toplamı` : "", apply: (text) => this._setSel(d.id, text) }, btn);
         }
 
         _renderColBtns(dims) {
@@ -1418,6 +1502,7 @@
         }
 
         _popLabel(id) {
+            if (id === SUB_ID && this._popCtx.sub) return this._popCtx.sub;
             const desc = this._popCtx.desc;
             return desc ? desc.get(id) || "" : "";
         }
