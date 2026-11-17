@@ -589,7 +589,7 @@
                 if (!this._rows.length) {
                     this._destroyTable();
                     const fl = Array.from(p.filters.entries()).map(([d, v]) => `${d}=${v.join(",")}`).join("; ");
-                    this._setStatus(`Bu filtrelerle veri yok. [v1.1.3] kayıt: ${rowRecs.length} · ${fl} · ${p.measures.map(m => m.id).join(",")}`);
+                    this._setStatus(`Bu filtrelerle veri yok. [v1.1.4] kayıt: ${rowRecs.length} · ${fl} · ${p.measures.map(m => m.id).join(",")}`);
                     this._statusEl.title = filter;
                     return;
                 }
@@ -1236,13 +1236,14 @@
             return this._matCache.pr;
         }
 
-        async _get(path, params) {
+        // shared: önbellekteki ortak istek, yeniden yüklemede iptal edilmez
+        async _get(path, params, shared) {
             const qs = Object.keys(params).filter(k => params[k]).map(k => `${k}=${encodeURIComponent(params[k])}`).join("&");
             let url = `${window.location.origin}/api/v1/dataexport/providers/sac/${encodeURIComponent(this._pid)}/${path}${qs ? "?" + qs : ""}`;
             const out = [];
             let retries = 2;
             while (url) {
-                const resp = await fetch(url, { method: "GET", credentials: "include", headers: { Accept: "application/json" }, signal: this._abort && this._abort.signal });
+                const resp = await fetch(url, { method: "GET", credentials: "include", headers: { Accept: "application/json" }, signal: shared ? undefined : this._abort && this._abort.signal });
                 if (resp.status >= 500 && retries-- > 0) {
                     await new Promise(r => setTimeout(r, 500));
                     continue;
@@ -1407,7 +1408,7 @@
 
         _versionMap(pid) {
             if (!this._versions.has(pid)) {
-                const pr = this._get("VersionMaster", {}).then(rows => new Map(rows.map(r => [r.ID, { s: r.BUD_START || "", e: r.BUD_END || "", as: r.ACT_START || "", ae: r.ACT_END || "" }])));
+                const pr = this._get("VersionMaster", {}, true).then(rows => new Map(rows.map(r => [r.ID, { s: r.BUD_START || "", e: r.BUD_END || "", as: r.ACT_START || "", ae: r.ACT_END || "" }])));
                 this._versions.set(pid, pr);
                 pr.catch(() => this._versions.delete(pid));
             }
