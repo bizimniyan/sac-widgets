@@ -442,7 +442,7 @@
                 this._setStatus("Builder panelinden model, versiyon ve parametreleri girin.");
                 return;
             }
-            const scope = `Version eq '${q(p.version)}'` + (p.companies.length ? ` and ${orEq("ZSIRKET_KODU", p.companies)}` : "");
+            const scope = `Version eq '${q(p.version)}'` + (p.companies.length ? ` and ${orEq("ZSIRKET_KODU", p.companies)}` : "") + " and ZMALZEME ne 'KOMB' and ZMALZEME ne 'KOMBYENI'";
             const rowFilter = `${scope} and ${orEq("ZPARAMETRE", p.params)} and Date ne '${NONE}'`;
             const paramFilter = `${rowFilter} and ${nzF(p.measures)}`;
             this._paramFilter = paramFilter;

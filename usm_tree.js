@@ -783,7 +783,7 @@
                 this._setStatus("Builder panelinden model, versiyon ve parametreleri girin.");
                 return;
             }
-            this._scopeFilter = `Version eq '${q(version)}'` + (companies.length ? ` and ${orEq("ZSIRKET_KODU", companies)}` : "") + NZ_FILTER;
+            this._scopeFilter = `Version eq '${q(version)}'` + (companies.length ? ` and ${orEq("ZSIRKET_KODU", companies)}` : "") + " and ZMALZEME ne 'KOMB' and ZMALZEME ne 'KOMBYENI'" + NZ_FILTER;
             this._baseFilter = `${this._scopeFilter} and ${orEq("ZPARAMETRE", this._params)}`;
             this._setStatus("Malzeme listesi yükleniyor…");
 

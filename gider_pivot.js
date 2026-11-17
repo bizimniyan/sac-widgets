@@ -483,6 +483,7 @@
             }
             // VersionMaster okunamazsa bütçe dönemi filtresiz devam
             const budget = await this._budgetClause(p).catch(() => "");
+            const matKomb = await this._matClause().catch(() => "");
             const actDate = p.actOn ? await this._actClause(p).catch(() => "") : "";
             if (token !== this._token) return;
             const mIds = p.measures.map(m => m.id);
@@ -497,6 +498,7 @@
             } else {
                 filter = and(and(eqJoin(fEntries), nzF(Array.from(new Set(mIds)))), budget);
             }
+            filter = and(filter, matKomb);
             this._baseFilter = filter;
             this._mIds = Array.from(new Set(mIds));
             const rowParam = p.rows.filter(d => d.id === "ZPARAMETRE" && !p.cols.some(c => c.id === d.id));
@@ -1139,6 +1141,17 @@
                 this._table = null;
             }
             this._tableEl.innerHTML = "";
+        }
+
+        _matClause() {
+            if (!this._matCache || this._matCache.pid !== this._pid) {
+                const url = `${window.location.origin}/api/v1/dataexport/providers/sac/${encodeURIComponent(this._pid)}/$metadata`;
+                const pr = fetch(url, { credentials: "include" }).then(r => r.ok ? r.text() : "")
+                    .then(t => /Name="ZMALZEME"/.test(t) ? "ZMALZEME ne 'KOMB' and ZMALZEME ne 'KOMBYENI'" : "");
+                this._matCache = { pid: this._pid, pr };
+                pr.catch(() => { this._matCache = null; });
+            }
+            return this._matCache.pr;
         }
 
         async _get(path, params) {

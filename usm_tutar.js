@@ -609,7 +609,7 @@
                 return;
             }
             const mos = this._grp.O;
-            this._listFilter = `Version eq '${q(version)}'` + (companies.length ? ` and ${orEq("ZSIRKET_KODU", companies)}` : "") + ` and ${orEq("ZPARAMETRE", params)}`;
+            this._listFilter = `Version eq '${q(version)}'` + (companies.length ? ` and ${orEq("ZSIRKET_KODU", companies)}` : "") + " and ZMALZEME ne 'KOMB' and ZMALZEME ne 'KOMBYENI'" + ` and ${orEq("ZPARAMETRE", params)}`;
             this._baseFilter = this._listFilter + (mos ? ` and ${orEq("ZMASRAF_OGESI", Array.from(mos))}` : "");
             const all = MEASURES.join(",");
             this._setStatus("Malzeme listesi yükleniyor…");
