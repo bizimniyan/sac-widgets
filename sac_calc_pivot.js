@@ -675,7 +675,7 @@ C_MLZMLT_CIRO_PCT	Malzeme Maliyeti / Ciro (%)	IF([R_CIRO] = 0, 0, [R_MALZMALIYET
             filter = and(filter, budget);
             // müşterisi # olan TRNSFR girdi satırları dağıtılmış PREDGTM ile çift sayılıyor
             filter = and(filter, "ZMUSTERI ne '#'");
-            filter = and(filter, "ZMALZEME ne 'KOMB' and ZMALZEME ne 'KOMBYENI'");
+            filter = and(filter, "ZMALZEME ne '#' and ZMALZEME ne 'KOMB' and ZMALZEME ne 'KOMBYENI'");
             this._baseFilter = filter;
             this._mIds = mIds;
             const colDims = p.cols.filter(d => d.id !== "Date" && !d.attr && qDims.indexOf(d.base) < 0);
