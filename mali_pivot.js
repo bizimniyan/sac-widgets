@@ -467,6 +467,7 @@
             }
             const filters = parseFilters(this.filters);
             SCRIPT_ONLY.forEach(([d]) => filters.delete(d));
+            if (!filters.has("ZHESAP.MIZAN")) filters.set("ZHESAP.MIZAN", ["X"]);
             this._override.forEach((vals, dim) => { if (vals.length) filters.set(dim, vals); else filters.delete(dim); });
             const hasV = cols.some(d => d.id === "Version");
             const actTick = hasV && this._actual !== false;
