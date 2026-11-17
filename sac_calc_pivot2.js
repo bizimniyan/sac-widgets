@@ -190,11 +190,10 @@
     // SAC Karlılık Modeli > Calculations birebir (Name, Description, Formula)
     const FORMULAS = `
 R_CIRO	Ciro	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "KAR0001")
-R_MALZMALIYET	Malzeme Maliyeti	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "KAR0052")
 R_ADET	Satış Adedi	RESTRICT([ZMIKTAR], [d/ZPARAMETRE] = "KAR0002")
 R_DIR_ISCILIK	Direkt İşçilik (720)	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "KAR0007")
 R_ENDIR_ISCILIK	Endirekt İşçilik	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "KAR0010")
-R_MALZ_MALIYET	Malzeme Maliyeti	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "KAR0003")
+R_MALZ_MALIYET	UMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "KAR0003")
 R_TOPLAM_SURE	Toplam İşçilik Süresi (Saat)	RESTRICT([ZMIKTAR], [d/ZPARAMETRE] = "KAR0005")
 R_AMORTISMAN_730	Amortisman (730)	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "KAR0012")
 R_ENERJI	Enerji	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "KAR0014")
@@ -215,7 +214,7 @@ C_FAALIYET_GID	Faaliyet Giderleri	[R_740] + [R_750] + [R_760] + [R_770]
 C_FAALIYET_KARI	Faaliyet Karı	[C_BRUT_KAR] - [C_FAALIYET_GID]
 C_EBITDA	EBITDA	[C_FAALIYET_KARI] + [R_TOP_AMORTISMAN]
 C_NET_KAR	KAR	[C_FAALIYET_KARI] - [R_FINANSMAN_GID]
-C_MALZ_CIRO_PCT	Malzeme Maliyeti / Ciro (%)	IF([R_CIRO] = 0, 0, [R_MALZ_MALIYET] / [R_CIRO])
+C_MALZ_CIRO_PCT	UMM / Ciro (%)	IF([R_CIRO] = 0, 0, [R_MALZ_MALIYET] / [R_CIRO])
 C_DIR_ISC_CIRO_PCT	Direkt İşçilik / Ciro (%)	IF([R_CIRO] = 0, 0, [R_DIR_ISCILIK] / [R_CIRO])
 C_ENDIR_ISC_CIRO_PCT	Endirekt İşçilik / Ciro (%)	IF([R_CIRO] = 0, 0, [R_ENDIR_ISCILIK] / [R_CIRO])
 C_AMORT_CIRO_PCT	Amortisman / Ciro (%)	IF([R_CIRO] = 0, 0, [R_AMORTISMAN_730] / [R_CIRO])
@@ -241,6 +240,8 @@ C_EBITDA_CIRO_PCT	EBITDA / Ciro (%)	IF([R_CIRO] = 0, 0, [C_EBITDA] / [R_CIRO])
 C_FIN_GID_CIRO_PCT	Finansman Giderleri / Ciro (%)	IF([R_CIRO] = 0, 0, [R_FINANSMAN_GID] / [R_CIRO])
 C_NET_KAR_CIRO_PCT	Kar / Ciro (%)	IF([R_CIRO] = 0, 0, [C_NET_KAR] / [R_CIRO])
 R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
+R_MALZMALIYET	Malzeme Maliyeti	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "KAR0052")
+C_MLZMLT_CIRO_PCT	Malzeme Maliyeti / Ciro (%)	IF([R_CIRO] = 0, 0, [R_MALZMALIYET] / [R_CIRO])
 `;
     const CMP = {
         "=": (a, b) => a === b, "<>": (a, b) => a !== b, "!=": (a, b) => a !== b,
@@ -614,7 +615,8 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
             const cols = parseItems(this.colDims);
             const measures = parseItems(this.measures);
             const ciro = measures.findIndex(m => m.id === "R_CIRO");
-            if (ciro >= 0 && !measures.some(m => m.id === "R_MALZMALIYET")) measures.splice(ciro + 1, 0, { id: "R_MALZMALIYET", base: "R_MALZMALIYET", attr: "", label: "R_MALZMALIYET" });
+            const yeni = ["R_MALZMALIYET", "C_MLZMLT_CIRO_PCT"].filter(id => !measures.some(m => m.id === id));
+            if (ciro >= 0 && yeni.length) measures.splice(ciro + 1, 0, ...yeni.map(id => ({ id, base: id, attr: "", label: id })));
             const tutarOn = !!String(this.measureSelect || "").trim();
             this._mSelWrap.hidden = !tutarOn;
             measures.forEach(m => { if (m.label === m.id && CALC.has(m.id)) m.label = CALC.get(m.id).desc || m.id; });
