@@ -588,7 +588,9 @@
                 });
                 if (!this._rows.length) {
                     this._destroyTable();
-                    this._setStatus("Bu filtrelerle veri yok.");
+                    const fl = Array.from(p.filters.entries()).map(([d, v]) => `${d}=${v.join(",")}`).join("; ");
+                    this._setStatus(`Bu filtrelerle veri yok. [v1.1.3] kayıt: ${rowRecs.length} · ${fl} · ${p.measures.map(m => m.id).join(",")}`);
+                    this._statusEl.title = filter;
                     return;
                 }
                 this._blockOn = false;
@@ -1205,6 +1207,7 @@
         _setStatus(text, isError) {
             this._statusEl.textContent = text;
             this._statusEl.className = isError ? "error" : "";
+            this._statusEl.title = "";
         }
 
         _updateStatus() {
