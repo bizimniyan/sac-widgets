@@ -514,6 +514,7 @@
                 return;
             }
             // VersionMaster okunamazsa bütçe dönemi filtresiz devam
+            await this._fixVersions(p);
             const budget = await this._budgetClause(p).catch(() => "");
             const matKomb = await this._matClause().catch(() => "");
             if (token !== this._token) return;
@@ -1380,6 +1381,7 @@
 
         async _openYearPopup(btn) {
             const p = this._loadParams();
+            await this._fixVersions(p);
             const vers = p.filters.get("Version") || [];
             if (!this._versions.has(p.pid)) await this._budgetClause(p).catch(() => "");
             const vm = this._versions.has(p.pid) ? await this._versions.get(p.pid).catch(() => new Map()) : new Map();
@@ -1399,15 +1401,30 @@
             this._scheduleReload();
         }
 
+        _versionMap(pid) {
+            if (!this._versions.has(pid)) {
+                const pr = this._get("VersionMaster", {}).then(rows => new Map(rows.map(r => [r.ID, { s: r.BUD_START || "", e: r.BUD_END || "", as: r.ACT_START || "", ae: r.ACT_END || "" }])));
+                this._versions.set(pid, pr);
+                pr.catch(() => this._versions.delete(pid));
+            }
+            return this._versions.get(pid);
+        }
+
+        // versiyon adı "public." ile açılmışsa ID public.public.X olur
+        async _fixVersions(p) {
+            const vers = p.filters.get("Version");
+            if (!vers || !vers.length) return;
+            const vm = await this._versionMap(p.pid).catch(() => null);
+            if (!vm) return;
+            const fix = (v) => vm.has(v) || !vm.has("public." + v) ? v : "public." + v;
+            p.filters.set("Version", vers.map(fix));
+            p.vers = p.vers.map(fix);
+        }
+
         async _budgetClause(p) {
             const vers = (this._budget && p.filters.get("Version")) || [];
             if (!vers.length) return "";
-            if (!this._versions.has(p.pid)) {
-                const pr = this._get("VersionMaster", {}).then(rows => new Map(rows.map(r => [r.ID, { s: r.BUD_START || "", e: r.BUD_END || "", as: r.ACT_START || "", ae: r.ACT_END || "" }])));
-                this._versions.set(p.pid, pr);
-                pr.catch(() => this._versions.delete(p.pid));
-            }
-            const vm = await this._versions.get(p.pid);
+            const vm = await this._versionMap(p.pid);
             const act = Array.from(new Set(p.vers.map(v => vm.get(v)).filter(b => b && b.as && b.ae).map(b => `(Date ge '${q(b.as)}' and Date le '${q(b.ae)}')`)));
             const parts = vers.map(v => {
                 if (v === ACTUAL && p.actOn && act.length) return `(Version eq '${q(v)}' and (Date eq '000000' or Date eq '#' or ${act.length === 1 ? act[0] : "(" + act.join(" or ") + ")"}))`;
