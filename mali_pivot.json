@@ -12,14 +12,14 @@
         {
             "kind": "main",
             "tag": "custom-mali-pivot",
-            "url": "https://bizimniyan.github.io/sac-widgets/mali_pivot.js?v=111",
+            "url": "https://bizimniyan.github.io/sac-widgets/mali_pivot.js?v=110",
             "integrity": "",
             "ignoreIntegrity": true
         },
         {
             "kind": "builder",
             "tag": "custom-mali-pivot-builder",
-            "url": "https://bizimniyan.github.io/sac-widgets/mali_pivot_builder.js?v=111",
+            "url": "https://bizimniyan.github.io/sac-widgets/mali_pivot_builder.js?v=110",
             "integrity": "",
             "ignoreIntegrity": true
         }
