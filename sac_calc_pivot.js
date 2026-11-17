@@ -190,6 +190,7 @@
     // SAC Karlılık Modeli > Calculations birebir (Name, Description, Formula)
     const FORMULAS = `
 R_CIRO	Ciro	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "KAR0001")
+R_MALZMALIYET	Malzeme Maliyeti	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "KAR0052")
 R_ADET	Satış Adedi	RESTRICT([ZMIKTAR], [d/ZPARAMETRE] = "KAR0002")
 R_DIR_ISCILIK	Direkt İşçilik (720)	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "KAR0007")
 R_ENDIR_ISCILIK	Endirekt İşçilik	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "KAR0010")
@@ -598,6 +599,8 @@ R_USM_SMM	Toplam SMM	RESTRICT([ZTUTAR_EUR], [d/ZPARAMETRE] = "USM0028")
             const rows = parseItems(this.rowDims);
             const cols = parseItems(this.colDims);
             const measures = parseItems(this.measures);
+            const ciro = measures.findIndex(m => m.id === "R_CIRO");
+            if (ciro >= 0 && !measures.some(m => m.id === "R_MALZMALIYET")) measures.splice(ciro + 1, 0, { id: "R_MALZMALIYET", base: "R_MALZMALIYET", attr: "", label: "R_MALZMALIYET" });
             const tutarOn = !!String(this.measureSelect || "").trim();
             this._mSelWrap.hidden = !tutarOn;
             measures.forEach(m => { if (m.label === m.id && CALC.has(m.id)) m.label = CALC.get(m.id).desc || m.id; });
