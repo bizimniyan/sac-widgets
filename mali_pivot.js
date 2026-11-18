@@ -6,6 +6,7 @@
     const NO_MASTER = new Set(["Date", "Version", "ZCURRENCY"]);
     const DIM_LABEL = { Date: "Dönem", Version: "Versiyon" };
     const DESC_ONLY = new Set(["ZPARAMETRE"]);
+    const CODE_ONLY = new Set(["ZKAYNAKMODEL", "ZHESAPLAMA"]);
     const SCRIPT_ONLY = [["Version", "setVersion"], ["ZSIRKET_KODU", "setCompanyCode"]];
     const CUR_FREE = new Set(["ZORAN", "ZMIKTAR"]);
     const SUP_PARAMS = new Set(["USM0008"]);
@@ -570,7 +571,7 @@
                 masterDims.forEach((d, i) => {
                     const m = new Map();
                     masters[i].forEach(r => { if (r.Description) m.set(r.ID, r.Description); });
-                    if (m.size && !NO_MASTER.has(d)) this._desc.set(d, m);
+                    if (m.size && !NO_MASTER.has(d) && !CODE_ONLY.has(d)) this._desc.set(d, m);
                     if (attrs.has(d)) this._attrs.set(d, new Map(masters[i].map(r => [r.ID, r])));
                 });
                 colDims.forEach(d => { if (!this._colSel.has(d.id)) this._colAll.set(d.id, Array.from(new Set(colRecs.map(r => r[d.id]).filter(v => v !== undefined && v !== null))).sort(cmpCode)); });
@@ -590,7 +591,7 @@
                 if (!this._rows.length) {
                     this._destroyTable();
                     const fl = Array.from(p.filters.entries()).map(([d, v]) => `${d}=${v.join(",")}`).join("; ");
-                    this._setStatus(`Bu filtrelerle veri yok. [v1.1.7] kayıt: ${rowRecs.length} · ${fl} · ${p.measures.map(m => m.id).join(",")}`);
+                    this._setStatus(`Bu filtrelerle veri yok. [v1.1.8] kayıt: ${rowRecs.length} · ${fl} · ${p.measures.map(m => m.id).join(",")}`);
                     this._statusEl.title = filter;
                     return;
                 }
