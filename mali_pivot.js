@@ -533,7 +533,7 @@
             filter = and(filter, Array.from(this._colSel.values()).map(c => c.clause).join(" and "));
             const attrFilters = parseItems(Array.from(p.filters.keys()).filter(d => d.indexOf(".") > 0).join(","));
             const items = p.rows.concat(p.cols, attrFilters);
-            const afBases = attrFilters.map(d => d.base).concat(attrFilters.some(d => d.id === "ZHESAP.MIZAN") ? ["ZPARAMETRE"] : []);
+            const afBases = attrFilters.map(d => d.base).concat(["ZHESAP", "ZPARAMETRE"]);
             const dims = Array.from(new Set(items.map(d => d.base).concat(afBases)));
             const attrs = new Map();
             items.forEach(d => {
@@ -591,7 +591,7 @@
                 if (!this._rows.length) {
                     this._destroyTable();
                     const fl = Array.from(p.filters.entries()).map(([d, v]) => `${d}=${v.join(",")}`).join("; ");
-                    this._setStatus(`Bu filtrelerle veri yok. [v1.1.9] kayıt: ${rowRecs.length} · ${fl} · ${p.measures.map(m => m.id).join(",")}`);
+                    this._setStatus(`Bu filtrelerle veri yok. [v1.2.0] kayıt: ${rowRecs.length} · ${fl} · ${p.measures.map(m => m.id).join(",")}`);
                     this._statusEl.title = filter;
                     return;
                 }
@@ -731,8 +731,6 @@
             const rowIds = p.rows.map(d => d.id);
             const mIds = p.measures.map(m => m.id);
             const af = attrFilters.map(d => [d, new Set(p.filters.get(d.id))]);
-            // 570580 MIZAN≠X olsa da sadece MLT0002 kolonunda gelir
-            const mizanExc = (d, r) => d.id === "ZHESAP.MIZAN" && r.ZPARAMETRE === "MLT0002" && r.ZHESAP === "570580";
             const withTotal = false;
             const pIdx = p.cols.length > 1 ? p.cols.findIndex(d => d.id === "ZPARAMETRE") : -1;
             const vIdx = p.cols.findIndex(d => d.id === "Version");
@@ -792,7 +790,12 @@
                     return x === null || x === undefined || x === "" ? null : Number(x);
                 });
                 if (nums.every(x => x === null)) return;
-                for (let k = 0; k < af.length; k++) if (!af[k][1].has(this._valueOf(af[k][0], r)) && !mizanExc(af[k][0], r)) return;
+                const h = String(r.ZHESAP || "");
+                if (h === "570580") return;
+                // 570/580 MIZAN'dan bagimsiz, sadece kumule (MLT0002) kolonunda
+                const h5758 = /^5[78]0/.test(h);
+                if (h5758 && r.ZPARAMETRE !== "MLT0002") return;
+                for (let k = 0; k < af.length; k++) if (!af[k][1].has(this._valueOf(af[k][0], r)) && !(h5758 && af[k][0].id === "ZHESAP.MIZAN")) return;
                 const cvals = p.cols.map(d => this._valueOf(d, r));
                 const ck = cvals.join(SEP);
                 let ci = colIndex.get(ck);
