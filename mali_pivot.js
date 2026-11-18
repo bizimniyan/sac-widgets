@@ -591,7 +591,7 @@
                 if (!this._rows.length) {
                     this._destroyTable();
                     const fl = Array.from(p.filters.entries()).map(([d, v]) => `${d}=${v.join(",")}`).join("; ");
-                    this._setStatus(`Bu filtrelerle veri yok. [v1.1.8] kayıt: ${rowRecs.length} · ${fl} · ${p.measures.map(m => m.id).join(",")}`);
+                    this._setStatus(`Bu filtrelerle veri yok. [v1.1.9] kayıt: ${rowRecs.length} · ${fl} · ${p.measures.map(m => m.id).join(",")}`);
                     this._statusEl.title = filter;
                     return;
                 }
@@ -731,8 +731,8 @@
             const rowIds = p.rows.map(d => d.id);
             const mIds = p.measures.map(m => m.id);
             const af = attrFilters.map(d => [d, new Set(p.filters.get(d.id))]);
-            // 570/580 hesapları MIZAN≠X olsa da sadece MLT0002'de gelir
-            const mizanExc = (d, r) => d.id === "ZHESAP.MIZAN" && r.ZPARAMETRE === "MLT0002" && /^5[78]0/.test(String(r.ZHESAP || ""));
+            // 570580 MIZAN≠X olsa da sadece MLT0002 kolonunda gelir
+            const mizanExc = (d, r) => d.id === "ZHESAP.MIZAN" && r.ZPARAMETRE === "MLT0002" && r.ZHESAP === "570580";
             const withTotal = false;
             const pIdx = p.cols.length > 1 ? p.cols.findIndex(d => d.id === "ZPARAMETRE") : -1;
             const vIdx = p.cols.findIndex(d => d.id === "Version");
