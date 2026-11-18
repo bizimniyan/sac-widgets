@@ -531,7 +531,7 @@
             filter = and(filter, Array.from(this._colSel.values()).map(c => c.clause).join(" and "));
             const attrFilters = parseItems(Array.from(p.filters.keys()).filter(d => d.indexOf(".") > 0).join(","));
             const items = p.rows.concat(p.cols, attrFilters);
-            const afBases = attrFilters.map(d => d.base).concat(attrFilters.some(d => d.id === "ZHESAP.MIZAN") ? ["ZKAYNAKMODEL"] : []);
+            const afBases = attrFilters.map(d => d.base).concat(attrFilters.some(d => d.id === "ZHESAP.MIZAN") ? ["ZPARAMETRE"] : []);
             const dims = Array.from(new Set(items.map(d => d.base).concat(afBases)));
             const attrs = new Map();
             items.forEach(d => {
@@ -589,7 +589,7 @@
                 if (!this._rows.length) {
                     this._destroyTable();
                     const fl = Array.from(p.filters.entries()).map(([d, v]) => `${d}=${v.join(",")}`).join("; ");
-                    this._setStatus(`Bu filtrelerle veri yok. [v1.1.5] kayıt: ${rowRecs.length} · ${fl} · ${p.measures.map(m => m.id).join(",")}`);
+                    this._setStatus(`Bu filtrelerle veri yok. [v1.1.6] kayıt: ${rowRecs.length} · ${fl} · ${p.measures.map(m => m.id).join(",")}`);
                     this._statusEl.title = filter;
                     return;
                 }
@@ -730,7 +730,7 @@
             const mIds = p.measures.map(m => m.id);
             const af = attrFilters.map(d => [d, new Set(p.filters.get(d.id))]);
             // 570/580 hesapları MIZAN≠X olsa da sadece MLT0002'de gelir
-            const mizanExc = (d, r) => d.id === "ZHESAP.MIZAN" && r.ZKAYNAKMODEL === "MLT0002" && /^5[78]0/.test(String(r.ZHESAP || ""));
+            const mizanExc = (d, r) => d.id === "ZHESAP.MIZAN" && r.ZPARAMETRE === "MLT0002" && /^5[78]0/.test(String(r.ZHESAP || ""));
             const withTotal = false;
             const pIdx = p.cols.length > 1 ? p.cols.findIndex(d => d.id === "ZPARAMETRE") : -1;
             const vIdx = p.cols.findIndex(d => d.id === "Version");
