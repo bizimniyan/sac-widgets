@@ -363,7 +363,7 @@
             this._ids = new Map();
             this._dirty = new Map();
             this._byKey = new Map();
-            this._metaCache = new Map();
+            this._mem = new Map();
             this._allowed = new Map();
             this._rowDims = [];
             this._rows = [];
@@ -416,6 +416,7 @@
         }
 
         refresh() {
+            this._mem = new Map();
             return this._reload(true);
         }
 
@@ -458,19 +459,45 @@
             return true;
         }
 
-        _meta() {
-            if (!this._metaCache.has(this._pid)) {
-                const pr = fetch(`${window.location.origin}/api/v1/dataimport/models/${encodeURIComponent(this._pid)}/metadata`, { credentials: "include", headers: { Accept: "application/json" } })
-                    .then(async r => {
-                        if (!r.ok) throw new Error(`Model metadata okunamadı: HTTP ${r.status} ${(await r.text()).slice(0, 200)}`);
-                        const f = (await r.json()).factData;
-                        const keys = f.keys;
-                        return { keys, measures: f.columns.map(c => c.columnName).filter(c => keys.indexOf(c) < 0) };
-                    });
-                this._metaCache.set(this._pid, pr);
-                pr.catch(() => this._metaCache.delete(this._pid));
+        _fetchMeta() {
+            return fetch(`${window.location.origin}/api/v1/dataimport/models/${encodeURIComponent(this._pid)}/metadata`, { credentials: "include", headers: { Accept: "application/json" } })
+                .then(async r => {
+                    if (!r.ok) throw new Error(`Model metadata okunamadı: HTTP ${r.status} ${(await r.text()).slice(0, 200)}`);
+                    const f = (await r.json()).factData;
+                    return { keys: f.keys, measures: f.columns.map(c => c.columnName).filter(c => f.keys.indexOf(c) < 0) };
+                });
+        }
+
+        // tarayıcıda saklanır: hemen eski değer döner, arkada tazelenir; değiştiyse yeniden yükler
+        _persist(name, fn) {
+            const key = `sacgiris:${this._pid}:${name}`;
+            if (this._mem.has(key)) return this._mem.get(key);
+            let stored = null;
+            try { stored = JSON.parse(window.localStorage.getItem(key)); } catch (e) { stored = null; }
+            const fresh = fn().then(v => { try { window.localStorage.setItem(key, JSON.stringify(v)); } catch (e) { /* kota */ } return v; });
+            if (stored) {
+                this._mem.set(key, Promise.resolve(stored));
+                fresh.then(v => {
+                    if (JSON.stringify(v) === JSON.stringify(stored)) return;
+                    this._mem.set(key, Promise.resolve(v));
+                    if (!this._dirty.size && !this._saving) this._reload(true);
+                }).catch(() => {});
+            } else {
+                this._mem.set(key, fresh);
+                fresh.catch(() => this._mem.delete(key));
             }
-            return this._metaCache.get(this._pid);
+            return this._mem.get(key);
+        }
+
+        // anaveri oturum boyunca bir kez okunur
+        _master(d, sel) {
+            const key = `${this._pid}|${d}|${sel}`;
+            if (!this._mem.has(key)) {
+                const pr = this._get(`${d}Master`, { $select: sel }, true);
+                this._mem.set(key, pr);
+                pr.catch(() => this._mem.delete(key));
+            }
+            return this._mem.get(key);
         }
 
         async _doReload(p) {
@@ -499,7 +526,19 @@
             const t0 = Date.now();
             this._setStatus("Yükleniyor…");
             try {
-                const [, meta] = await Promise.all([loadScript(TABULATOR_JS), this._meta()]);
+                // meta, versiyon ve anaveriler aynı anda istenir
+                const preItems = p.rows.concat(p.cols, parseItems(Array.from(p.filters.keys()).filter(d => d.indexOf(".") > 0).join(",")));
+                const preAttrs = new Map();
+                preItems.forEach(d => {
+                    if (!d.attr) return;
+                    if (!preAttrs.has(d.base)) preAttrs.set(d.base, new Set());
+                    preAttrs.get(d.base).add(d.attr);
+                });
+                const selOf = (d) => ["ID", "Description"].concat(Array.from(preAttrs.get(d) || [])).join(",");
+                Array.from(new Set(preItems.map(d => d.base))).filter(d => !NO_MASTER.has(d) || preAttrs.has(d)).forEach(d => this._master(d, selOf(d)).catch(() => {}));
+                const verP = this._persist("ver", () => this._get("VersionMaster", {}, true).then(rows => rows.map(r => ({ ID: r.ID, BUD_START: r.BUD_START || "", BUD_END: r.BUD_END || "" }))));
+                verP.catch(() => {});
+                const [, meta] = await Promise.all([loadScript(TABULATOR_JS), this._persist("meta", () => this._fetchMeta())]);
                 if (token !== this._token) return;
                 const keys = meta.keys;
                 const mIds = Array.from(new Set(p.measures.map(m => m.id)));
@@ -524,7 +563,7 @@
                 // nitelik filtresi (BOYUT.NİTELİK=değer) anaveriden üye listesine çevrilir
                 const allowed = new Map();
                 const afBases = Array.from(new Set(attrFilters.map(d => d.base)));
-                const afMasters = await Promise.all(afBases.map(b => this._get(`${b}Master`, { $select: ["ID"].concat(Array.from(new Set(attrFilters.filter(d => d.base === b).map(d => d.attr)))).join(",") })
+                const afMasters = await Promise.all(afBases.map(b => this._master(b, selOf(b))
                     .catch(e => { throw new Error(`${b} nitelikleri okunamadı: ${errText(e)}`); })));
                 if (token !== this._token) return;
                 attrFilters.forEach(d => {
@@ -559,7 +598,7 @@
                 });
                 let dateList = null;
                 if (used.has("Date") && !p.filters.has("Date") && fixed.has("Version")) {
-                    const vm = await this._get("VersionMaster", {}).catch(() => []);
+                    const vm = await verP.catch(() => []);
                     if (token !== this._token) return;
                     const b = vm.find(r => r.ID === fixed.get("Version"));
                     if (b && b.BUD_START && b.BUD_END) {
@@ -579,7 +618,7 @@
                 });
                 const masterDims = dims.filter(d => !NO_MASTER.has(d) || attrs.has(d));
                 const [masters, recs] = await Promise.all([
-                    Promise.all(masterDims.map(d => this._get(`${d}Master`, { $select: ["ID", "Description"].concat(Array.from(attrs.get(d) || [])).join(",") })
+                    Promise.all(masterDims.map(d => this._master(d, selOf(d))
                         .catch(e => { if (attrs.has(d)) throw new Error(`${d} özellikleri okunamadı (${Array.from(attrs.get(d)).join(", ")}): ${errText(e)}`); return []; }))),
                     this._get("FactDataAggregation", { $select: dims.concat(mIds).join(","), $filter: filter })
                 ]);
@@ -627,13 +666,7 @@
                 const rowLists = plainRows.map(d => (p.filters.get(d.id) || (d.id === "Date" && dateList) || (this._ids.get(d.id) || []).filter(v => v !== "#")).filter(ok(d.id)));
                 if (rowLists.every(l => l.length) && rowLists.reduce((n, l) => n * l.length, 1) <= CELL_MAX) product(rowLists).forEach(vals => this._rowFor(vals));
                 this._rows = Array.from(this._byKey.values());
-                this._rows.sort((a, b) => {
-                    for (let i = 0; i < p.rows.length; i++) {
-                        const c = cmpCode(a["r" + i], b["r" + i]);
-                        if (c) return c;
-                    }
-                    return 0;
-                });
+                this._sortRows();
                 this._rows.forEach(r => this._rowTotals(r));
                 this._dimIds = new Map();
                 this._canWrite = !multi.length;
@@ -650,6 +683,17 @@
                 this._destroyTable();
                 this._setStatus("Yüklenemedi: " + errText(e), true);
             }
+        }
+
+        _sortRows() {
+            const n = this._rowDims.length;
+            this._rows.sort((a, b) => {
+                for (let i = 0; i < n; i++) {
+                    const c = cmpCode(a["r" + i], b["r" + i]);
+                    if (c) return c;
+                }
+                return 0;
+            });
         }
 
         _fillRow(row, vals) {
@@ -1108,7 +1152,7 @@
         }
 
         // değişen hücreleri tam anahtarlı kayıtlara çevirir
-        async _records() {
+        _records() {
             const recs = new Map();
             const seen = new Map();
             const newKeys = new Set();
@@ -1142,7 +1186,11 @@
                 });
                 recs.set(k, rec);
             });
-            // ekranda olmayan measure'lar mevcut değeriyle gider
+            return recs;
+        }
+
+        // ekranda olmayan measure'lar mevcut değeriyle gider
+        async _mergeOther(recs) {
             const other = this._allM.filter(m => this._mIds.indexOf(m) < 0);
             if (other.length) {
                 const d0 = this._plainRows[0].id;
@@ -1159,6 +1207,26 @@
             return Array.from(recs.values());
         }
 
+        // yazılan değerler ekranda zaten var: yeniden okumadan temize çeker, yeni satırları listeye alır
+        _afterSave() {
+            const moved = new Set();
+            this._dirty.forEach(({ row }) => { if (row._new) moved.add(row); });
+            this._dirty = new Map();
+            if (!moved.size) return;
+            moved.forEach(row => {
+                const vals = this._plainRows.map(d => String(row["r" + this._rowDims.indexOf(d)] || "").trim() || hashOf(d.id));
+                this._fillRow(row, vals);
+                row.key = vals.join(SEP);
+                delete row._new;
+                this._byKey.set(row.key, row);
+                this._rows.push(row);
+            });
+            this._newRows = this._newRows.filter(r => !moved.has(r));
+            this._sortRows();
+            this._dimIds = new Map();
+            this._ensureBlanks();
+        }
+
         async save() {
             if (this._saving || !this._dirty.size) return;
             if (!this._canWrite) { this._setStatus(this._roWhy, true); return; }
@@ -1166,14 +1234,17 @@
             this._syncSave();
             let step = "kayıtlar hazırlanıyor";
             try {
-                const data = await this._records();
-                this._setStatus(`Kaydediliyor: ${nf.format(data.length)} kayıt…`);
+                const dataP = this._mergeOther(this._records());
+                dataP.catch(() => {});
+                this._setStatus("Kaydediliyor…");
                 step = "CSRF";
                 const cr = await fetch(`${window.location.origin}/api/v1/csrf`, { credentials: "include", headers: { "x-csrf-token": "Fetch" } });
                 const csrf = cr.headers.get("x-csrf-token") || "";
                 step = "job";
                 const job = await this._post(`models/${encodeURIComponent(this._pid)}/factData`, { JobSettings: { importMethod: "Update", executeWithFailedRows: false, ignoreAdditionalColumns: true } }, csrf);
                 if (!job.jobID) throw new Error("jobID dönmedi");
+                step = "mevcut değerler";
+                const data = await dataP;
                 step = "veri";
                 for (const part of chunks(data, 1000)) {
                     const r = await this._post(`jobs/${job.jobID}`, { Data: part }, csrf);
@@ -1188,16 +1259,17 @@
                 step = "yazma";
                 await this._post(`jobs/${job.jobID}/run`, {}, csrf);
                 let status = "PROCESSING";
-                for (let i = 0; i < 300 && status !== "COMPLETED"; i++) {
-                    await sleep(1000);
+                for (let i = 0; i < 400 && status !== "COMPLETED"; i++) {
+                    await sleep(i < 10 ? 300 : 1000);
                     status = (await this._job(`jobs/${job.jobID}/status`)).jobStatus || "";
                     if (/FAIL|ERROR|CANCEL/i.test(status)) throw new Error(`job ${status}`);
                 }
                 if (status !== "COMPLETED") throw new Error(`job bitmedi (${status})`);
                 this._saving = false;
+                this._afterSave();
                 this._flash = `Kaydedildi: ${nf.format(data.length)} kayıt`;
+                this._applyFilter();
                 this.dispatchEvent(new CustomEvent("onSaved"));
-                this._reload(true);
             } catch (e) {
                 this._saving = false;
                 this._syncSave();
@@ -1283,13 +1355,13 @@
             this._tableEl.innerHTML = "";
         }
 
-        async _get(path, params) {
+        async _get(path, params, noAbort) {
             const qs = Object.keys(params).filter(k => params[k]).map(k => `${k}=${encodeURIComponent(params[k])}`).join("&");
             let url = `${window.location.origin}/api/v1/dataexport/providers/sac/${encodeURIComponent(this._pid)}/${path}${qs ? "?" + qs : ""}`;
             const out = [];
             let retries = 2;
             while (url) {
-                const resp = await fetch(url, { method: "GET", credentials: "include", headers: { Accept: "application/json" }, signal: this._abort && this._abort.signal });
+                const resp = await fetch(url, { method: "GET", credentials: "include", headers: { Accept: "application/json" }, signal: noAbort ? undefined : this._abort && this._abort.signal });
                 if (resp.status >= 500 && retries-- > 0) {
                     await new Promise(r => setTimeout(r, 500));
                     continue;
