@@ -364,6 +364,7 @@
             this._dirty = new Map();
             this._byKey = new Map();
             this._metaCache = new Map();
+            this._allowed = new Map();
             this._rowDims = [];
             this._rows = [];
             this._newRows = [];
@@ -511,7 +512,7 @@
                 const badM = mIds.filter(m => meta.measures.indexOf(m) < 0);
                 if (badM.length) throw new Error(`Modelde olmayan measure: ${badM.join(", ")}`);
                 if (p.cols.some(d => d.attr)) throw new Error("Sütunda özellik (BOYUT.ÖZELLİK) kullanılamaz.");
-                const lone = items.concat(attrFilters).filter(d => d.attr && !plainRows.some(r => r.id === d.base)).map(d => d.id);
+                const lone = items.filter(d => d.attr && !plainRows.some(r => r.id === d.base)).map(d => d.id);
                 if (lone.length) throw new Error(`Özellik için boyutun kendisi de satırda olmalı: ${lone.join(", ")}`);
                 if (!plainRows.length) throw new Error("Satırda en az bir boyut olmalı.");
                 Array.from(p.filters.keys()).forEach(d => {
@@ -519,6 +520,30 @@
                     if (SCRIPT_ONLY.some(([s]) => s === d)) p.filters.delete(d);
                     else throw new Error(`Modelde olmayan filtre boyutu: ${d}`);
                 });
+
+                // nitelik filtresi (BOYUT.NİTELİK=değer) anaveriden üye listesine çevrilir
+                const allowed = new Map();
+                const afBases = Array.from(new Set(attrFilters.map(d => d.base)));
+                const afMasters = await Promise.all(afBases.map(b => this._get(`${b}Master`, { $select: ["ID"].concat(Array.from(new Set(attrFilters.filter(d => d.base === b).map(d => d.attr)))).join(",") })
+                    .catch(e => { throw new Error(`${b} nitelikleri okunamadı: ${errText(e)}`); })));
+                if (token !== this._token) return;
+                attrFilters.forEach(d => {
+                    const want = new Set(p.filters.get(d.id));
+                    const ids = afMasters[afBases.indexOf(d.base)].filter(r => want.has(String(r[d.attr] === undefined || r[d.attr] === null ? "" : r[d.attr]))).map(r => r.ID);
+                    const prev = allowed.get(d.base);
+                    allowed.set(d.base, new Set(prev ? ids.filter(v => prev.has(v)) : ids));
+                });
+                allowed.forEach((set, b) => {
+                    if (!set.size) throw new Error(`${b}: nitelik filtresine uyan üye yok`);
+                    if (used.has(b)) return;
+                    const direct = p.filters.get(b);
+                    const list = Array.from(set).filter(v => !direct || direct.indexOf(v) >= 0);
+                    if (!list.length) throw new Error(`${b}: nitelik filtresi ile değer filtresi kesişmiyor`);
+                    if (list.length > 150) throw new Error(`${b}: nitelik filtresi ${list.length} üye seçiyor; boyutu satıra alın`);
+                    p.filters.set(b, list);
+                });
+                this._allowed = allowed;
+                const ok = (b) => (v) => !allowed.has(b) || allowed.get(b).has(v);
 
                 // satır/sütun/filtrede olmayan her boyut = atanmamış (#)
                 const fixed = new Map();
@@ -571,7 +596,7 @@
                 });
 
                 const inData = (d) => Array.from(new Set(recs.map(r => r[d]).filter(v => v !== undefined && v !== null))).sort(cmpCode);
-                const colLists = p.cols.map(d => p.filters.get(d.id) || (d.id === "Date" && dateList) || inData(d.id));
+                const colLists = p.cols.map(d => (p.filters.get(d.id) || (d.id === "Date" && dateList) || inData(d.id)).filter(ok(d.id)));
                 const emptyCol = p.cols.filter((d, i) => !colLists[i].length).map(d => d.id);
                 if (emptyCol.length) throw new Error(`Sütun değeri yok; filtre verin: ${emptyCol.join(", ")}`);
                 if (colLists.reduce((n, l) => n * l.length, 1) > CELL_MAX) throw new Error("Sütun sayısı çok fazla; filtreyi daraltın.");
@@ -579,7 +604,6 @@
                 const colIndex = new Map(this._cols.map(c => [c.vals.join(SEP), c.ci]));
 
                 this._p = p;
-                this._af = attrFilters.map(d => [d, new Set(p.filters.get(d.id))]);
                 this._rowDims = p.rows;
                 this._plainRows = plainRows;
                 this._mIds = p.measures.map(m => m.id);
@@ -600,7 +624,7 @@
                     });
                 });
                 // veri olmayan kombinasyonlar: filtre değerleri ya da anaveri
-                const rowLists = plainRows.map(d => p.filters.get(d.id) || (d.id === "Date" && dateList) || (this._ids.get(d.id) || []).filter(v => v !== "#"));
+                const rowLists = plainRows.map(d => (p.filters.get(d.id) || (d.id === "Date" && dateList) || (this._ids.get(d.id) || []).filter(v => v !== "#")).filter(ok(d.id)));
                 if (rowLists.every(l => l.length) && rowLists.reduce((n, l) => n * l.length, 1) <= CELL_MAX) product(rowLists).forEach(vals => this._rowFor(vals));
                 this._rows = Array.from(this._byKey.values());
                 this._rows.sort((a, b) => {
@@ -646,7 +670,7 @@
             if (row) return row;
             row = { key };
             const rec = this._fillRow(row, vals);
-            for (let k = 0; k < this._af.length; k++) if (!this._af[k][1].has(this._valueOf(this._af[k][0], rec))) return null;
+            for (const [b, set] of this._allowed) if (b in rec && !set.has(rec[b])) return null;
             this._byKey.set(key, row);
             return row;
         }
@@ -1100,6 +1124,7 @@
                         this._plainRows.forEach((d, j) => {
                             const ids = this._ids.get(d.id);
                             if (ids && vals[j] !== hashOf(d.id) && ids.indexOf(vals[j]) < 0) throw new Error(`${d.label} anaveride yok: ${vals[j]}`);
+                            if (this._allowed.has(d.id) && !this._allowed.get(d.id).has(vals[j])) throw new Error(`${d.label} nitelik filtresine uymuyor: ${vals[j]}`);
                         });
                         if (this._byKey.has(vals.join(SEP))) throw new Error(`Bu satır zaten var: ${vals.join(" / ")}`);
                     }

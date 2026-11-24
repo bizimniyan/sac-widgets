@@ -3,7 +3,7 @@
         { id: "providerId", label: "Model ProviderID", rows: 1 },
         { id: "rowDims", label: "Satırlar (virgülle; ID:Başlık; özellik BOYUT.ÖZELLİK)", hint: "ZHESAP:Hesap", rows: 2 },
         { id: "colDims", label: "Sütunlar (virgülle; ID:Başlık, boş olabilir)", hint: "Date", rows: 2 },
-        { id: "filters", label: "Filtreler (BOYUT=değer ; ile ayrılır; Version ve şirket kodu script ile; satır/sütun/filtrede olmayan boyut = #)", hint: "ZPARAMETRE=MLT0001", rows: 4 },
+        { id: "filters", label: "Filtreler (BOYUT=değer ya da BOYUT.NİTELİK=değer; ; ile ayrılır; Version ve şirket kodu script ile; satır/sütun/filtrede olmayan boyut = #)", hint: "ZPARAMETRE=MLT0001", rows: 4 },
         { id: "measures", label: "Measure (virgülle; ID:Başlık)", hint: "ZTUTAR:Tutar", rows: 1 },
         { id: "freezeCols", label: "Donuk kolon sayısı (soldan, tanım kolonları dahil; boş = ilk boyut)", hint: "2", rows: 1 }
     ];
