@@ -187,6 +187,7 @@
         .forEach(ev => el.addEventListener(ev, e => e.stopPropagation()));
 
     const CELL_MAX = 3000;
+    const BLANKS = 20;
     const hashOf = (dim) => dim === "Date" ? "000000" : "#";
     const parseNum = (t) => {
         let s = String(t).trim().replace(/\s/g, "");
@@ -295,18 +296,16 @@
             .pop-f button { padding: 3px 12px; }
             .pop-f .primary { background: #ff0000; border-color: #ff0000; color: #fff; }
             .pop-f .primary:hover { background: #ff3333; }
-            #save, #addR { flex: 0 0 auto; margin: 2px 0 2px 6px; padding: 1px 8px; font: 11px Arial, sans-serif; cursor: pointer; border: 1px solid #dadada; background: #fff; border-radius: 3px; color: #444; }
-            #addR { margin-left: 0; }
+            #save { flex: 0 0 auto; margin: 2px 0 2px 6px; padding: 1px 8px; font: 11px Arial, sans-serif; cursor: pointer; border: 1px solid #dadada; background: #fff; border-radius: 3px; color: #444; }
             #save:disabled { color: #999; cursor: default; }
             #save.on { background: #ff0000; border-color: #ff0000; color: #fff; }
-            #addR:hover { background: #ffe8e8; }
             .tabulator-row .tabulator-cell.dirty { background-color: #fff3c4 !important; }
             .tabulator-row .tabulator-cell.tabulator-editing { padding: 0; }
             .ced { width: 100%; height: 100%; box-sizing: border-box; border: 1px solid #ff0000; outline: 0; font: 12px Arial, sans-serif; text-align: right; padding: 0 7px; }
             .ced.txt { text-align: left; }
         </style>
         <div class="wrap">
-            <div class="bar"><button id="save" disabled>Kaydet</button><button id="xls">Excel'e aktar</button><button id="addR" title="Listede olmayan kombinasyon için boş satır">+ Satır</button><div id="status">Yükleniyor…</div></div>
+            <div class="bar"><button id="save" disabled>Kaydet</button><button id="xls">Excel'e aktar</button><div id="status">Yükleniyor…</div></div>
             <div id="table"></div>
             <div id="pop" class="pop" hidden>
                 <div class="pop-h"><span id="popTitle"></span><button class="x" id="popClose" title="Kapat">×</button></div>
@@ -349,7 +348,6 @@
             this._xlsBtn.addEventListener("click", () => this.exportExcel());
             this._saveBtn = shadowRoot.getElementById("save");
             this._saveBtn.addEventListener("click", () => this.save());
-            shadowRoot.getElementById("addR").addEventListener("click", () => this._addRow());
             this._table = null;
             this._token = 0;
             this._sel = new Map();
@@ -612,6 +610,8 @@
                 this._canWrite = !multi.length;
                 this._roWhy = multi.length ? `Salt okunur: ${multi.join(", ")} filtresinde tek değer olmalı (ya da satır/sütuna alın)` : "";
                 this._full = true;
+                this._destroyTable();
+                this._growBlanks(BLANKS);
                 this._buildTable(p);
                 this._loadMs = Date.now() - t0;
                 this._updateStatus();
@@ -747,7 +747,7 @@
                 if (this._twoCols(d.id)) row[`r${i}d`] = "";
             });
             row.r0 = "Toplam";
-            if (this._twoCols(this._rowDims[0].id)) row.r0d = `${nf.format(shown.length)} satır`;
+            if (this._twoCols(this._rowDims[0].id)) row.r0d = `${nf.format(shown.length - this._blankCount())} satır`;
             const fields = this._leaves.map(c => c.field);
             fields.forEach(f => { row[f] = null; });
             shown.forEach(r => {
@@ -762,7 +762,7 @@
         _applyFilter() {
             this._inputs.forEach((input, dim) => input.classList.toggle("on", this._sel.has(dim)));
             if (!this._table) return;
-            this._shown = this._newRows.concat(this._filtered());
+            this._shown = this._filtered().concat(this._newRows);
             this._table.replaceData([this._totalRow()].concat(this._shown));
             this._updateStatus();
         }
@@ -784,13 +784,15 @@
             const fz = parseInt(this.freezeCols, 10);
             const first = this._twoCols(p.rows[0].id) ? 2 : 1;
             columns.forEach((c, k) => { c.frozen = k < (fz > 0 ? fz : first); });
-            return columns.concat(this._columnDefs(p));
+            const defs = this._columnDefs(p);
+            this._allFields = columns.map(c => c.field).concat(this._leaves.map(c => c.field));
+            return columns.concat(defs);
         }
 
         _buildTable(p) {
             this._destroyTable();
             const columns = this._columns(p);
-            this._shown = this._newRows.concat(this._filtered());
+            this._shown = this._filtered().concat(this._newRows);
             this._table = new window.Tabulator(this._tableEl, {
                 index: "key",
                 data: [this._totalRow()].concat(this._shown),
@@ -893,17 +895,21 @@
                 input.value = typed ? typed : v === null || v === undefined ? "" : num ? nfCopy.format(v) : v;
                 onRendered(() => { input.focus(); if (!typed) input.select(); });
                 let done = false;
-                const finish = (commit) => {
+                const finish = (commit, dr, dc) => {
                     if (done) return;
                     done = true;
                     const text = input.value;
+                    const key = cell.getData().key;
+                    const field = cell.getField();
                     cancel();
                     if (commit) this._commit(cell, text, num);
+                    if (dr || dc) this._move(key, field, dr, dc);
                 };
                 input.addEventListener("blur", () => finish(true));
                 input.addEventListener("keydown", (e) => {
                     e.stopPropagation();
-                    if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); finish(true); }
+                    if (e.key === "Enter") { e.preventDefault(); finish(true, 1, 0); }
+                    else if (e.key === "Tab") { e.preventDefault(); finish(true, 0, e.shiftKey ? -1 : 1); }
                     else if (e.key === "Escape") finish(false);
                 });
                 return input;
@@ -920,14 +926,57 @@
                 if (this._setCell(row, field, v)) this._flush(new Set([row]));
                 return;
             }
-            const vals = this._rowDims.map((d, i) => d.attr ? null : "r" + i === field ? text.trim() : row["r" + i]).filter(v => v !== null);
+            this._setDim(row, field, text);
+            this._flush(new Set([row]));
+        }
+
+        _setDim(row, field, text) {
+            const vals = this._rowDims.map((d, i) => d.attr ? null : "r" + i === field ? String(text).trim() : row["r" + i]).filter(v => v !== null);
             this._fillRow(row, vals);
-            const u = { key: row.key };
-            this._rowDims.forEach((d, i) => {
-                u["r" + i] = row["r" + i];
-                if (this._twoCols(d.id)) u[`r${i}d`] = row[`r${i}d`];
-            });
-            this._table.updateData([u]);
+        }
+
+        _isBlank(row) {
+            return !!row._new && this._plainRows.every(d => !row["r" + this._rowDims.indexOf(d)]) && !this._vFields.some(f => row[f] !== undefined && row[f] !== null);
+        }
+
+        _blankCount() {
+            return this._newRows.filter(r => this._isBlank(r)).length;
+        }
+
+        // Excel tablosu gibi: en altta hep BLANKS kadar boş satır
+        _ensureBlanks() {
+            let n = 0;
+            for (let i = this._newRows.length - 1; i >= 0 && this._isBlank(this._newRows[i]); i--) n++;
+            if (n < BLANKS) this._growBlanks(BLANKS - n);
+        }
+
+        _growBlanks(n) {
+            if (!this._canWrite) return;
+            const add = [];
+            for (let i = 0; i < n; i++) {
+                const row = { key: "\u0002" + (++this._newSeq), _new: true };
+                this._fillRow(row, this._plainRows.map(() => ""));
+                add.push(row);
+            }
+            this._newRows.push(...add);
+            if (this._table) {
+                this._shown.push(...add);
+                this._table.addData(add, false);
+            }
+        }
+
+        _move(key, field, dr, dc) {
+            try {
+                const ri = this._shown.findIndex(r => r.key === key) + dr;
+                const fi = this._allFields.indexOf(field) + dc;
+                const row = this._shown[ri] && this._table.getRow(this._shown[ri].key);
+                if (!row || fi < 0 || fi >= this._allFields.length) return;
+                const cell = row.getCell(this._allFields[fi]);
+                const range = this._table.getRanges()[0];
+                if (!cell || !range) return;
+                range.setBounds(cell, cell);
+                cell.getElement().focus();
+            } catch (e) { /* seçim taşınamazsa yerinde kalır */ }
         }
 
         // boş bırakılan dolu hücre = 0 yazılır
@@ -953,44 +1002,48 @@
                 if (!this._table.getRow(row.key)) return;
                 const u = { key: row.key };
                 fields.forEach(f => { u[f] = row[f] === undefined ? null : row[f]; });
+                if (row._new) this._rowDims.forEach((d, i) => {
+                    u["r" + i] = row["r" + i];
+                    if (this._twoCols(d.id)) u[`r${i}d`] = row[`r${i}d`];
+                });
                 upd.push(u);
             });
+            this._ensureBlanks();
             upd.push(this._totalRow());
             this._table.updateData(upd);
             this._updateStatus();
         }
 
+        // görünen kolon sırasıyla yapıştırır; yeni satırda kod kolonları da dolar
         _paste(text) {
             const cells = this._rangeCells();
             if (!cells.length || !this._canWrite || this._saving) return;
             const r0 = this._shown.findIndex(r => r.key === cells[0].getData().key);
-            const c0 = this._vFields.indexOf(cells[0].getField());
+            const c0 = this._allFields.indexOf(cells[0].getField());
             if (r0 < 0 || c0 < 0) return;
             const lines = text.replace(/\r/g, "").split("\n");
             if (lines[lines.length - 1] === "") lines.pop();
+            if (r0 + lines.length > this._shown.length) this._growBlanks(r0 + lines.length - this._shown.length);
             const rows = new Set();
             let bad = 0;
             lines.forEach((line, i) => {
                 const row = this._shown[r0 + i];
                 if (!row) return;
                 line.split("\t").forEach((t, j) => {
-                    const f = this._vFields[c0 + j];
+                    const f = this._allFields[c0 + j];
                     if (!f) return;
-                    const v = parseNum(t);
-                    if (v !== v) { bad++; return; }
-                    if (v !== null && this._setCell(row, f, v)) rows.add(row);
+                    if (/^v\d+_\d+$/.test(f)) {
+                        const v = parseNum(t);
+                        if (v !== v) { bad++; return; }
+                        if (v !== null && this._setCell(row, f, v)) rows.add(row);
+                    } else if (row._new && /^r\d+$/.test(f) && !this._rowDims[+f.slice(1)].attr) {
+                        this._setDim(row, f, t);
+                        rows.add(row);
+                    }
                 });
             });
             this._flush(rows);
             if (bad) this._setStatus(`${bad} hücre sayı değil, atlandı.`, true);
-        }
-
-        _addRow() {
-            if (!this._table || !this._canWrite || this._saving) return;
-            const row = { key: "\u0002" + (++this._newSeq), _new: true };
-            this._fillRow(row, this._plainRows.map(() => ""));
-            this._newRows.unshift(row);
-            this._applyFilter();
         }
 
         _syncSave() {
@@ -1021,12 +1074,16 @@
         async _records() {
             const recs = new Map();
             const seen = new Map();
+            const newKeys = new Set();
             this._dirty.forEach(({ row, field }) => {
                 const ci = Number(field.match(/^v(\d+)_/)[1]);
                 let vals = seen.get(row);
                 if (!vals) {
                     vals = this._plainRows.map((d, j) => String(row["r" + this._rowDims.indexOf(d)] || "").trim() || hashOf(d.id));
                     if (row._new) {
+                        if (this._plainRows.every(d => !row["r" + this._rowDims.indexOf(d)])) throw new Error("Değer girilen yeni satırda kod boş.");
+                        if (newKeys.has(vals.join(SEP))) throw new Error(`Aynı satır iki kez girilmiş: ${vals.join(" / ")}`);
+                        newKeys.add(vals.join(SEP));
                         this._plainRows.forEach((d, j) => {
                             const ids = this._ids.get(d.id);
                             if (ids && vals[j] !== hashOf(d.id) && ids.indexOf(vals[j]) < 0) throw new Error(`${d.label} anaveride yok: ${vals[j]}`);
@@ -1169,8 +1226,9 @@
 
         _updateStatus() {
             this._syncSave();
-            const n = this._shown.length;
-            const all = this._rows.length + this._newRows.length;
+            const blank = this._blankCount();
+            const n = this._shown.length - blank;
+            const all = this._rows.length + this._newRows.length - blank;
             const flash = this._flash ? this._flash + " · " : "";
             this._flash = "";
             if (!this._canWrite && this._roWhy) { this._setStatus(this._roWhy, true); return; }
