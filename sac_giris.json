@@ -1,0 +1,157 @@
+{
+    "name": "SacGirisWidget",
+    "description": "Satir/sutun/filtre disaridan verilen veri giris tablosu (modele yazar)",
+    "newInstancePrefix": "SacGiris",
+    "eula": "",
+    "vendor": "Custom",
+    "license": "",
+    "id": "com.custom.sacgiris",
+    "version": "1.0.0",
+    "icon": "",
+    "webcomponents": [
+        {
+            "kind": "main",
+            "tag": "custom-sac-giris",
+            "url": "https://bizimniyan.github.io/sac-widgets/sac_giris.js?v=100",
+            "integrity": "",
+            "ignoreIntegrity": true
+        },
+        {
+            "kind": "builder",
+            "tag": "custom-sac-giris-builder",
+            "url": "https://bizimniyan.github.io/sac-widgets/sac_giris_builder.js?v=100",
+            "integrity": "",
+            "ignoreIntegrity": true
+        }
+    ],
+    "properties": {
+        "width": {
+            "type": "integer",
+            "default": 1000
+        },
+        "height": {
+            "type": "integer",
+            "default": 500
+        },
+        "providerId": {
+            "type": "string",
+            "default": "Cg9hh4g6np3fl2l5al8cu22d5d"
+        },
+        "rowDims": {
+            "type": "string",
+            "default": "ZHESAP:Hesap"
+        },
+        "colDims": {
+            "type": "string",
+            "default": "Date"
+        },
+        "filters": {
+            "type": "string",
+            "default": "ZPARAMETRE=MLT0001"
+        },
+        "measures": {
+            "type": "string",
+            "default": "ZTUTAR:Tutar"
+        },
+        "freezeCols": {
+            "type": "string",
+            "default": "2"
+        }
+    },
+    "methods": {
+        "setVersion": {
+            "description": "Versiyonu verir ve veriyi yukler (zorunlu)",
+            "parameters": [
+                {
+                    "name": "version",
+                    "type": "string",
+                    "description": "Versiyon ID, orn. public.2027BUD_01"
+                }
+            ]
+        },
+        "setCompanyCode": {
+            "description": "Sirket kodunu verir ve veriyi yukler (zorunlu; bos = #)",
+            "parameters": [
+                {
+                    "name": "companyCode",
+                    "type": "string",
+                    "description": "Sirket kodu, orn. 1100"
+                }
+            ]
+        },
+        "setFilter": {
+            "description": "Sabit filtreyi degistirir ve veriyi yeniden yukler; bos deger = # (atanmamis)",
+            "parameters": [
+                {
+                    "name": "dimension",
+                    "type": "string",
+                    "description": "Boyut ID"
+                },
+                {
+                    "name": "values",
+                    "type": "string",
+                    "description": "Degerler virgulle"
+                }
+            ]
+        },
+        "getFilter": {
+            "description": "Boyutun gecerli sabit filtre degerleri (virgulle)",
+            "parameters": [
+                {
+                    "name": "dimension",
+                    "type": "string",
+                    "description": "Boyut ID"
+                }
+            ],
+            "returnType": "string"
+        },
+        "setSelection": {
+            "description": "Satir boyutu secim kutusu: 11*, 11000001, alt-ust, (boş), !kod = haric; ; ile coklu, bos = tumu",
+            "parameters": [
+                {
+                    "name": "dimension",
+                    "type": "string",
+                    "description": "Satir boyutu ID"
+                },
+                {
+                    "name": "values",
+                    "type": "string",
+                    "description": "Secim metni"
+                }
+            ]
+        },
+        "getSelection": {
+            "description": "Satir boyutunun gecerli secimi",
+            "parameters": [
+                {
+                    "name": "dimension",
+                    "type": "string",
+                    "description": "Satir boyutu ID"
+                }
+            ],
+            "returnType": "string"
+        },
+        "save": {
+            "description": "Degisen hucreleri modele yazar",
+            "parameters": []
+        },
+        "hasChanges": {
+            "description": "Kaydedilmemis degisiklik var mi",
+            "parameters": [],
+            "returnType": "boolean"
+        },
+        "exportExcel": {
+            "description": "Secime uyan satirlari Excel e aktarir",
+            "parameters": []
+        },
+        "refresh": {
+            "description": "Veriyi yeniden yukler (kaydedilmemis degisiklikler silinir)",
+            "parameters": []
+        }
+    },
+    "events": {
+        "onSaved": {
+            "description": "Kayit tamamlaninca"
+        }
+    }
+}
