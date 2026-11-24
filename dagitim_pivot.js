@@ -1007,6 +1007,8 @@
                 clipboard: "copy",
                 clipboardCopyRowRange: "range",
                 clipboardCopyStyled: false,
+                // Excel HTML sürümünü alıp NaN yapıştırıyordu; sadece düz metin kopyalanır
+                clipboardCopyFormatter: (type, out) => type === "html" ? "" : out,
                 clipboardCopyConfig: { columnHeaders: false, columnGroups: false, rowHeaders: false, columnCalcs: false },
                 placeholder: "Seçime uyan satır yok",
                 rowFormatter: (row) => { if (row.getData()._total) row.getElement().classList.add("row-total"); }

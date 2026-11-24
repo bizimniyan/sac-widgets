@@ -336,14 +336,19 @@
             this._statusEl = shadowRoot.getElementById("status");
             this._tableEl = shadowRoot.getElementById("table");
             this._tableEl.addEventListener("keydown", (e) => this._onKey(e), true);
-            this._tableEl.addEventListener("paste", (e) => {
-                if (e.target.closest("input,textarea,select")) return;
+            // odak düzenlenemez hücredeyken paste olayı gelmiyor; Ctrl+V'de odak gizli kutuya alınır
+            this._pasteEl = document.createElement("textarea");
+            this._pasteEl.style.cssText = "position:absolute;left:-9999px;top:0;width:1px;height:1px;opacity:0";
+            this._tableEl.parentNode.appendChild(this._pasteEl);
+            const back = () => { if (this._back && this._back.focus) this._back.focus(); this._back = null; };
+            this._pasteEl.addEventListener("paste", (e) => {
                 const text = (e.clipboardData || window.clipboardData).getData("text");
-                if (!text) return;
                 e.preventDefault();
                 e.stopPropagation();
-                this._paste(text);
+                back();
+                if (text) this._paste(text);
             });
+            this._pasteEl.addEventListener("keyup", back);
             this._xlsBtn = shadowRoot.getElementById("xls");
             this._xlsBtn.addEventListener("click", () => this.exportExcel());
             this._saveBtn = shadowRoot.getElementById("save");
@@ -807,6 +812,8 @@
                 clipboard: "copy",
                 clipboardCopyRowRange: "range",
                 clipboardCopyStyled: false,
+                // Excel HTML sürümünü alıp NaN yapıştırıyordu; sadece düz metin kopyalanır
+                clipboardCopyFormatter: (type, out) => type === "html" ? "" : out,
                 clipboardCopyConfig: { columnHeaders: false, columnGroups: false, rowHeaders: false, columnCalcs: false },
                 placeholder: "Seçime uyan satır yok",
                 rowFormatter: (row) => { if (row.getData()._total) row.getElement().classList.add("row-total"); }
@@ -861,6 +868,12 @@
             // Tabulator 6.3.1: Enter editörsüz hücrede çöküyor; düzenlemeyi kendimiz açıyoruz
             const isEnter = e.key === "Enter" || e.key === "F2";
             if (isEnter) e.stopPropagation();
+            if (this._table && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "v") {
+                this._back = this._root.activeElement;
+                this._pasteEl.value = "";
+                this._pasteEl.focus();
+                return;
+            }
             if (!this._table || e.ctrlKey || e.metaKey || e.altKey) return;
             const cells = this._rangeCells();
             if (!cells.length) return;
